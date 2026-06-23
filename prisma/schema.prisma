@@ -1,0 +1,205 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum VehicleType {
+  MOTO
+  CARRO
+  SUV
+  CAMINHONETE
+  OUTRO
+}
+
+enum OrderStatus {
+  AGUARDANDO
+  EM_LAVAGEM
+  FINALIZACAO
+  PRONTO
+  ENTREGUE
+  CANCELADO
+}
+
+enum PaymentMethod {
+  DINHEIRO
+  PIX
+  DEBITO
+  CREDITO
+  PENDENTE
+}
+
+enum PaymentStatus {
+  PAGO
+  PENDENTE
+  ESTORNADO
+}
+
+enum PaymentRecordType {
+  PAGAMENTO
+  ESTORNO
+}
+
+enum ExpenseCategory {
+  PRODUTOS_LIMPEZA
+  AGUA
+  ENERGIA
+  FUNCIONARIOS
+  MANUTENCAO
+  ALUGUEL
+  COMPRAS_DIVERSAS
+  OUTRO
+}
+
+enum UserRole {
+  PROPRIETARIO
+  ATENDENTE
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(ATENDENTE)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  category    String   @default("Geral")
+  price       Float
+  stock       Int?
+  minStock    Int      @default(5)
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vehicles Vehicle[]
+  orders   ServiceOrder[]
+}
+
+model Vehicle {
+  id          String      @id @default(cuid())
+  clientId    String
+  plate       String      @unique
+  brand       String?
+  model       String?
+  color       String?
+  vehicleType VehicleType @default(CARRO)
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  client Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  orders ServiceOrder[]
+}
+
+model Employee {
+  id        String   @id @default(cuid())
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders ServiceOrder[]
+}
+
+model Service {
+  id               String   @id @default(cuid())
+  name             String
+  category         String
+  defaultPrice     Float
+  estimatedMinutes Int      @default(30)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  vehiclePrices ServiceVehiclePrice[]
+  orderItems    OrderItem[]
+}
+
+model ServiceVehiclePrice {
+  id          String      @id @default(cuid())
+  serviceId   String
+  vehicleType VehicleType
+  price       Float
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, vehicleType])
+}
+
+model ServiceOrder {
+  id            String        @id @default(cuid())
+  clientId      String
+  vehicleId     String
+  employeeId    String?
+  status        OrderStatus   @default(AGUARDANDO)
+  subtotal      Float         @default(0)
+  discount      Float         @default(0)
+  total         Float         @default(0)
+  paymentMethod PaymentMethod @default(PENDENTE)
+  paymentStatus PaymentStatus @default(PENDENTE)
+  notes         String?
+  entryAt       DateTime      @default(now())
+  deliveredAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  client   Client    @relation(fields: [clientId], references: [id])
+  vehicle  Vehicle   @relation(fields: [vehicleId], references: [id])
+  employee Employee? @relation(fields: [employeeId], references: [id])
+
+  items    OrderItem[]
+  payments Payment[]
+}
+
+model OrderItem {
+  id          String @id @default(cuid())
+  orderId     String
+  serviceId   String?
+  serviceName String
+  price       Float
+
+  order   ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  service Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+}
+
+model Payment {
+  id        String            @id @default(cuid())
+  orderId   String
+  method    PaymentMethod
+  amount    Float
+  type      PaymentRecordType @default(PAGAMENTO)
+  notes     String?
+  createdAt DateTime          @default(now())
+
+  order ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  category    ExpenseCategory
+  description String
+  amount      Float
+  date        DateTime
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
