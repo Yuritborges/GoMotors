@@ -271,7 +271,7 @@ flowchart LR
 
 ## Licença e uso
 
-Projeto proprietário desenvolvido por **Yuri T. Borges**.  
+Projeto desenvolvido por **Marlyson Iury Taveira Borges**.  
 Uso, implantação e customização mediante contrato com o cliente.
 
 ---
