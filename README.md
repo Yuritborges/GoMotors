@@ -10,10 +10,38 @@
 </p>
 
 <p align="center">
-  <a href="https://go-motors-ten.vercel.app">Demo online</a> ·
+  <a href="https://go-motors-ten.vercel.app"><strong>Demo online</strong></a> ·
   <a href="https://go-motors-ten.vercel.app/display">Tela TV</a> ·
+  <a href="https://github.com/Yuritborges/GoMotors">GitHub</a> ·
   <a href="./DEPLOY.md">Deploy</a>
 </p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React 19" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/PostgreSQL-Neon-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL Neon" />
+  <img src="https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel" alt="Vercel" />
+  <img src="https://img.shields.io/badge/Mobile-first-✓-22c55e" alt="Mobile-first" />
+</p>
+
+---
+
+## Índice
+
+- [Sobre o projeto](#sobre-o-projeto)
+- [Por que o GoMotors?](#por-que-o-gomotors)
+- [Demo ao vivo](#demo-ao-vivo)
+- [Funcionalidades](#funcionalidades)
+- [Perfis de acesso](#perfis-de-acesso)
+- [Stack tecnológica](#stack-tecnológica)
+- [Rodar localmente](#rodar-localmente)
+- [Deploy em produção](#deploy-em-produção)
+- [Scripts úteis](#scripts-úteis)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Fluxo operacional](#fluxo-operacional)
+- [Próximos passos](#próximos-passos-pós-contrato)
+- [Licença e uso](#licença-e-uso)
 
 ---
 
@@ -21,7 +49,20 @@
 
 O **GoMotors** nasceu para substituir cadernos, planilhas e controles improvisados em lava-jatos. É um MVP funcional que cobre o fluxo operacional do dia a dia e dá ao dono uma visão gerencial clara do negócio.
 
-Ideal para apresentação a clientes, validação com a equipe e implantação personalizada com dados reais (clientes, serviços, estoque, funcionários).
+Ideal para **apresentação a clientes**, validação com a equipe e **implantação personalizada** com dados reais (clientes, serviços, estoque, funcionários).
+
+---
+
+## Por que o GoMotors?
+
+| Diferencial | Benefício |
+|-------------|-----------|
+| **Painel Kanban em tempo real** | Toda a equipe vê o status de cada veículo sem gritar ou anotar no papel |
+| **Tela TV para clientes** | Experiência profissional — o cliente acompanha a fila como em drive-thru |
+| **Mobile-first** | Atendentes registram ordens direto no celular, na hora da entrada |
+| **Caixa e relatórios** | Dono fecha o dia com números reais: faturamento, ticket médio, formas de pagamento |
+| **Perfis de acesso** | Admin vê tudo; atendente só o que precisa para operar |
+| **Pronto para nuvem** | Hospedado na Vercel com banco PostgreSQL (Neon) — acessível de qualquer lugar |
 
 ---
 
@@ -39,7 +80,7 @@ Ideal para apresentação a clientes, validação com a equipe e implantação p
 | **Administrador** | `admin@gomotors.local` | `admin123` | Tudo: caixa, estoque, relatórios, usuários |
 | **Atendente** | `atendente@gomotors.local` | `atendente123` | Painel, ordens, clientes, serviços (consulta) |
 
-> No celular, use o mesmo link. O layout se adapta automaticamente com barra inferior (Painel · Ordens · Clientes · Mais).
+> **Dica:** abra o link no celular para ver o layout mobile com barra inferior (**Painel · Ordens · Clientes · Mais**). No desktop, a navegação lateral completa fica disponível.
 
 ---
 
@@ -69,10 +110,10 @@ Ideal para apresentação a clientes, validação com a equipe e implantação p
 
 ### Mobile-first
 
-- Barra de navegação inferior no celular (sem sidebar fixa)
+- Barra de navegação inferior no celular (sem sidebar fixa quebrando o layout)
 - Menu **Mais** com módulos administrativos
 - Logo da empresa visível no header
-- Formulários e tabelas adaptados para telas pequenas
+- Formulários e tabelas adaptados para telas pequenas (sem zoom indesejado no iOS)
 
 ---
 
@@ -101,7 +142,7 @@ Atendente (ATENDENTE)
 | Backend | API Routes + Server Actions |
 | Banco | PostgreSQL (Neon) + Prisma 7 |
 | Auth | JWT em cookie httpOnly + bcrypt |
-| Deploy | Vercel + GitHub |
+| Deploy | Vercel + GitHub (CI/CD automático) |
 
 ---
 
@@ -192,6 +233,7 @@ GoMotors/
 │   ├── schema.prisma
 │   ├── seed.ts
 │   └── migrations/
+├── scripts/                # Testes Neon e Vercel
 ├── public/logo.png
 ├── DEPLOY.md
 └── README.md
@@ -236,5 +278,6 @@ Uso, implantação e customização mediante contrato com o cliente.
 
 <p align="center">
   <strong>GoMotors</strong> — Gestão inteligente para lava-jato<br/>
+  <a href="https://go-motors-ten.vercel.app">go-motors-ten.vercel.app</a> ·
   <a href="https://github.com/Yuritborges/GoMotors">github.com/Yuritborges/GoMotors</a>
 </p>
