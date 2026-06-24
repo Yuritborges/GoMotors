@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import {
   PAYMENT_METHOD_LABELS,
@@ -10,7 +10,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Label, Select, Textarea } from "@/components/ui/input";
+import { SearchCombobox } from "@/components/ui/search-combobox";
 import { PageHeader } from "@/components/layout/page-header";
+import Link from "next/link";
 
 type Client = {
   id: string;
@@ -30,6 +32,7 @@ type Employee = { id: string; name: string };
 
 export default function NovaOrdemPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -54,6 +57,13 @@ export default function NovaOrdemPage() {
     });
   }, []);
 
+  useEffect(() => {
+    const preClientId = searchParams.get("clientId");
+    const preVehicleId = searchParams.get("vehicleId");
+    if (preClientId) setClientId(preClientId);
+    if (preVehicleId) setVehicleId(preVehicleId);
+  }, [searchParams]);
+
   const selectedClient = clients.find((c) => c.id === clientId);
   const selectedVehicle = selectedClient?.vehicles.find((v) => v.id === vehicleId);
 
@@ -70,6 +80,59 @@ export default function NovaOrdemPage() {
   }, [selectedServices, selectedVehicle, services]);
 
   const total = Math.max(subtotal - Number(discount || 0), 0);
+
+  const clientOptions = useMemo(
+    () =>
+      clients.map((c) => ({
+        value: c.id,
+        label: c.name,
+        description: c.phone,
+        searchText: c.vehicles.map((v) => v.plate).join(" "),
+      })),
+    [clients]
+  );
+
+  const vehicleOptions = useMemo(() => {
+    if (clientId && selectedClient) {
+      return selectedClient.vehicles.map((v) => ({
+        value: v.id,
+        label: v.plate,
+        description: VEHICLE_TYPE_LABELS[v.vehicleType] ?? v.vehicleType,
+        searchText: v.plate,
+      }));
+    }
+    return clients.flatMap((c) =>
+      c.vehicles.map((v) => ({
+        value: `${c.id}:${v.id}`,
+        label: v.plate,
+        description: `${c.name} · ${VEHICLE_TYPE_LABELS[v.vehicleType] ?? v.vehicleType}`,
+        searchText: `${v.plate} ${c.name} ${c.phone}`,
+      }))
+    );
+  }, [clients, clientId, selectedClient]);
+
+  function handleClientChange(id: string) {
+    setClientId(id);
+    setVehicleId("");
+  }
+
+  function handleVehicleChange(id: string) {
+    const colon = id.indexOf(":");
+    if (colon !== -1) {
+      setClientId(id.slice(0, colon));
+      setVehicleId(id.slice(colon + 1));
+      return;
+    }
+    setVehicleId(id);
+  }
+
+  const vehicleComboboxValue = useMemo(() => {
+
+    if (!vehicleId) return "";
+    if (clientId) return vehicleId;
+    const client = clients.find((c) => c.vehicles.some((v) => v.id === vehicleId));
+    return client ? `${client.id}:${vehicleId}` : vehicleId;
+  }, [clientId, vehicleId, clients]);
 
   function toggleService(id: string) {
     setSelectedServices((prev) =>
@@ -113,44 +176,33 @@ export default function NovaOrdemPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle>Cliente e veículo</CardTitle>
+            <Link
+              href="/clientes?novo=1"
+              className="text-sm font-medium text-sky-600 hover:text-sky-700"
+            >
+              + Cadastro rápido
+            </Link>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Field>
-              <Label>Cliente</Label>
-              <Select
-                value={clientId}
-                onChange={(e) => {
-                  setClientId(e.target.value);
-                  setVehicleId("");
-                }}
-                required
-              >
-                <option value="">Selecione...</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} — {c.phone}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field>
-              <Label>Veículo</Label>
-              <Select
-                value={vehicleId}
-                onChange={(e) => setVehicleId(e.target.value)}
-                required
-                disabled={!clientId}
-              >
-                <option value="">Selecione...</option>
-                {selectedClient?.vehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.plate} ({VEHICLE_TYPE_LABELS[v.vehicleType]})
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            <SearchCombobox
+              label="Cliente"
+              options={clientOptions}
+              value={clientId}
+              onChange={handleClientChange}
+              placeholder="Nome, telefone ou placa..."
+              emptyMessage="Nenhum cliente encontrado"
+            />
+            <SearchCombobox
+              label="Veículo"
+              options={vehicleOptions}
+              value={vehicleComboboxValue}
+              onChange={handleVehicleChange}
+              placeholder={clientId ? "Digite a placa..." : "Placa ou nome do cliente..."}
+              disabled={clients.length === 0}
+              emptyMessage="Nenhum veículo encontrado"
+            />
             <Field className="sm:col-span-2">
               <Label>Funcionário responsável</Label>
               <Select

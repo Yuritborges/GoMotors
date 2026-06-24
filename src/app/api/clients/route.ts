@@ -28,15 +28,29 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const body = await request.json();
 
+  const plate = body.vehicle?.plate
+    ? body.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").toUpperCase()
+    : null;
+
+  if (plate) {
+    const existing = await prisma.vehicle.findUnique({ where: { plate } });
+    if (existing) {
+      return NextResponse.json(
+        { error: `A placa ${plate} já está cadastrada.` },
+        { status: 409 }
+      );
+    }
+  }
+
   const client = await prisma.client.create({
     data: {
-      name: body.name,
-      phone: body.phone,
+      name: body.name?.trim(),
+      phone: body.phone?.trim() || "—",
       notes: body.notes || null,
-      vehicles: body.vehicle
+      vehicles: plate
         ? {
             create: {
-              plate: body.vehicle.plate.replace(/[^A-Za-z0-9]/g, "").toUpperCase(),
+              plate,
               brand: body.vehicle.brand || null,
               model: body.vehicle.model || null,
               color: body.vehicle.color || null,

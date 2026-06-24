@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { VEHICLE_TYPE_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Label, Select, Textarea } from "@/components/ui/input";
+import { Field, Input, Label } from "@/components/ui/input";
 import { PageHeader } from "@/components/layout/page-header";
+import { QuickClientForm } from "@/components/clients/quick-client-form";
 
 type Client = {
   id: string;
@@ -24,19 +26,16 @@ type Client = {
 };
 
 export default function ClientesPage() {
+  const searchParams = useSearchParams();
   const [clients, setClients] = useState<Client[]>([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    phone: "",
-    notes: "",
-    plate: "",
-    brand: "",
-    model: "",
-    color: "",
-    vehicleType: "CARRO",
-  });
+
+  useEffect(() => {
+    if (searchParams.get("novo") === "1") {
+      setShowForm(true);
+    }
+  }, [searchParams]);
 
   async function loadClients(q = "") {
     const res = await fetch(`/api/clients${q ? `?search=${encodeURIComponent(q)}` : ""}`);
@@ -47,36 +46,7 @@ export default function ClientesPage() {
     loadClients();
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    await fetch("/api/clients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: form.name,
-        phone: form.phone,
-        notes: form.notes,
-        vehicle: form.plate
-          ? {
-              plate: form.plate,
-              brand: form.brand,
-              model: form.model,
-              color: form.color,
-              vehicleType: form.vehicleType,
-            }
-          : undefined,
-      }),
-    });
-    setForm({
-      name: "",
-      phone: "",
-      notes: "",
-      plate: "",
-      brand: "",
-      model: "",
-      color: "",
-      vehicleType: "CARRO",
-    });
+  function handleSaved() {
     setShowForm(false);
     loadClients(search);
   }
@@ -85,87 +55,36 @@ export default function ClientesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Clientes"
-        description="Cadastro de clientes e veículos"
+        description="Cadastro rápido para o dia a dia"
       >
-        <Button className="w-full sm:w-auto" onClick={() => setShowForm(!showForm)}>
-          {showForm ? "Fechar formulário" : "Novo cliente"}
+        <Button
+          className="w-full sm:w-auto"
+          size="lg"
+          onClick={() => setShowForm(!showForm)}
+        >
+          {showForm ? "Fechar" : "+ Cadastro rápido"}
         </Button>
       </PageHeader>
 
       {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Novo cliente</CardTitle>
+        <Card className="border-sky-200 bg-sky-50/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">Novo cliente em 30 segundos</CardTitle>
+            <p className="text-sm text-slate-600">
+              Placa, nome e tipo do veículo — pronto para abrir a ordem.
+            </p>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
-              <Field>
-                <Label>Nome</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  required
-                />
-              </Field>
-              <Field>
-                <Label>Telefone</Label>
-                <Input
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  required
-                />
-              </Field>
-              <Field>
-                <Label>Placa</Label>
-                <Input
-                  value={form.plate}
-                  onChange={(e) => setForm({ ...form, plate: e.target.value })}
-                />
-              </Field>
-              <Field>
-                <Label>Tipo de veículo</Label>
-                <Select
-                  value={form.vehicleType}
-                  onChange={(e) => setForm({ ...form, vehicleType: e.target.value })}
-                >
-                  {Object.entries(VEHICLE_TYPE_LABELS).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field>
-                <Label>Marca</Label>
-                <Input
-                  value={form.brand}
-                  onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                />
-              </Field>
-              <Field>
-                <Label>Modelo</Label>
-                <Input
-                  value={form.model}
-                  onChange={(e) => setForm({ ...form, model: e.target.value })}
-                />
-              </Field>
-              <Field className="sm:col-span-2">
-                <Label>Observações</Label>
-                <Textarea
-                  value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                />
-              </Field>
-              <div className="sm:col-span-2">
-                <Button type="submit">Salvar cliente</Button>
-              </div>
-            </form>
+            <QuickClientForm
+              onSuccess={handleSaved}
+              onCancel={() => setShowForm(false)}
+            />
           </CardContent>
         </Card>
       )}
 
       <Field>
-        <Label>Buscar</Label>
+        <Label>Buscar cliente</Label>
         <Input
           placeholder="Nome, telefone ou placa..."
           value={search}
@@ -176,35 +95,68 @@ export default function ClientesPage() {
         />
       </Field>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {clients.map((client) => (
-          <Card key={client.id}>
-            <CardContent className="pt-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <h3 className="font-semibold">{client.name}</h3>
-                  <p className="text-sm text-slate-500">{client.phone}</p>
+      {clients.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="text-slate-600">
+              {search ? "Nenhum cliente encontrado." : "Nenhum cliente cadastrado ainda."}
+            </p>
+            {!showForm && (
+              <Button className="mt-4" onClick={() => setShowForm(true)}>
+                + Cadastro rápido
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {clients.map((client) => (
+            <Card key={client.id}>
+              <CardContent className="pt-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <h3 className="font-semibold">{client.name}</h3>
+                    {client.phone !== "—" && (
+                      <p className="text-sm text-slate-500">{client.phone}</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                    <Link
+                      href={`/ordens/nova?clientId=${client.id}${
+                        client.vehicles[0] ? `&vehicleId=${client.vehicles[0].id}` : ""
+                      }`}
+                    >
+                      <Button size="sm" className="w-full sm:w-auto">
+                        Nova ordem
+                      </Button>
+                    </Link>
+                    <Link href={`/clientes/${client.id}`}>
+                      <Button size="sm" variant="outline" className="w-full sm:w-auto">
+                        Histórico
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
-                <Link href={`/clientes/${client.id}`} className="shrink-0">
-                  <Button size="sm" variant="outline" className="w-full sm:w-auto">
-                    Ver histórico
-                  </Button>
-                </Link>
-              </div>
-              <div className="mt-4 space-y-1">
-                {client.vehicles.map((v) => (
-                  <p key={v.id} className="text-sm text-slate-600">
-                    {v.plate} — {v.brand} {v.model} ({VEHICLE_TYPE_LABELS[v.vehicleType]})
-                  </p>
-                ))}
-              </div>
-              <p className="mt-3 text-xs text-slate-400">
-                {client._count.orders} ordens de serviço
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                <div className="mt-4 space-y-1">
+                  {client.vehicles.map((v) => (
+                    <p key={v.id} className="text-sm text-slate-600">
+                      <span className="font-medium tracking-wide">{v.plate}</span>
+                      {" · "}
+                      {VEHICLE_TYPE_LABELS[v.vehicleType]}
+                      {v.brand || v.model
+                        ? ` — ${[v.brand, v.model].filter(Boolean).join(" ")}`
+                        : ""}
+                    </p>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-slate-400">
+                  {client._count.orders} ordens de serviço
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
