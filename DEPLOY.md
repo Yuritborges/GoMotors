@@ -202,8 +202,8 @@ Acesse [http://localhost:3000](http://localhost:3000).
 | Erro | Solução |
 |------|---------|
 | `AUTH_SECRET não configurado` | Adicionar variável na Vercel e redeploy |
-| Build falha no `migrate deploy` | Conferir `DATABASE_URL` e `DIRECT_URL` na Vercel (Production). Migrations usam `DIRECT_URL` (sem `-pooler`) |
-| `P1001: Can't reach database` no build | URL pooler não funciona para migrate — confira se `DIRECT_URL` está definida na Vercel |
+| Build falha no `migrate deploy` | Migrations não rodam mais no build. Use `npm run db:migrate:deploy` localmente ao alterar o schema |
+| `P1001: Can't reach database` no build | Normal se `RUN_MIGRATE=1` — padrão é pular migrate no deploy. Confira `DATABASE_URL` e `DIRECT_URL` na Vercel para runtime |
 | Login não persiste | Verificar se `AUTH_SECRET` está definido em Production |
 | Página 500 no banco | Rodar `npm run db:migrate:deploy` e depois `npm run db:seed` |
 | Seed apaga tudo | Normal — só rode seed quando quiser resetar a demo |
