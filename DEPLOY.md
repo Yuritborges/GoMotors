@@ -132,17 +132,50 @@ https://gomotors-xxxxx.vercel.app/display
 
 ---
 
+## Deploy automático (GitHub → Vercel)
+
+Cada **`git push` na branch `main`** publica a versão nova em produção, sem passos manuais na Vercel.
+
+```
+Código local  →  git push  →  GitHub  →  Vercel (build)  →  go-motors-ten.vercel.app
+```
+
+### Conferir se está ativo (uma vez)
+
+1. Acesse [vercel.com/dashboard](https://vercel.com/dashboard) → projeto **GoMotors**
+2. **Settings → Git** — repositório `Yuritborges/GoMotors` conectado
+3. **Production Branch** = `main`
+4. **Deploy Hooks** / integração GitHub habilitada (padrão ao importar o repo)
+
+O arquivo `vercel.json` na raiz reforça deploy automático na branch `main`.
+
+### Publicar uma atualização
+
+```bash
+git add .
+git commit -m "Descrição da mudança"
+git push origin main
+```
+
+Em ~2–5 minutos:
+
+| Ambiente | URL |
+|----------|-----|
+| Sistema | https://go-motors-ten.vercel.app |
+| Tela TV | https://go-motors-ten.vercel.app/display |
+
+Acompanhe o progresso em **Deployments** no painel da Vercel. Status **Ready** = no ar.
+
+> **Importante:** o seed (`npm run db:seed`) **não** roda no deploy — só quando você rodar manualmente. Atualizações de código não apagam dados do banco.
+
+---
+
 ## Manutenção (você como desenvolvedor)
 
 1. Edite o código localmente.
 2. Teste com as URLs do Neon no `.env`.
-3. Commit e push:
-```bash
-git add .
-git commit -m "Descrição da mudança"
-git push
-```
-4. A Vercel **atualiza sozinha** em ~2 min.
+3. Commit e push (ver seção **Deploy automático** acima).
+4. Aguarde o deploy na Vercel e teste a URL.
 
 O cliente só precisa da URL — não precisa instalar Node nem rodar comandos.
 
