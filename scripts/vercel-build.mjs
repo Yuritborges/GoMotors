@@ -1,6 +1,7 @@
 /**
  * Build de produção (Vercel/local).
- * Migrations usam DIRECT_URL quando disponível — obrigatório no Neon durante o build.
+ * Migrations ficam fora do build — rode `npm run db:migrate:deploy` ao alterar o schema.
+ * Isso evita falha P1001 quando o Neon não responde na região de build da Vercel.
  */
 import "dotenv/config";
 import { execSync } from "node:child_process";
@@ -11,26 +12,21 @@ function run(command, env = process.env) {
 
 run("npx prisma generate");
 
-const migrateUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
-
-if (!migrateUrl) {
-  console.error(
-    "\n[build] Erro: defina DATABASE_URL e DIRECT_URL (Neon) nas variáveis de ambiente.\n" +
-      "Vercel → Settings → Environment Variables → Production\n"
+if (process.env.RUN_MIGRATE === "1") {
+  const migrateUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+  if (!migrateUrl) {
+    console.error("[build] RUN_MIGRATE=1 mas DATABASE_URL/DIRECT_URL não definidas.");
+    process.exit(1);
+  }
+  run("npx prisma migrate deploy", {
+    ...process.env,
+    DATABASE_URL: migrateUrl,
+  });
+} else {
+  console.log(
+    "[build] Migrations omitidas no deploy (padrão). " +
+      "Para aplicar schema: npm run db:migrate:deploy"
   );
-  process.exit(1);
 }
-
-if (!process.env.DIRECT_URL) {
-  console.warn(
-    "[build] Aviso: DIRECT_URL não definida — migrate usará DATABASE_URL (pooler). " +
-      "No Neon, prefira DIRECT_URL para migrations."
-  );
-}
-
-run("npx prisma migrate deploy", {
-  ...process.env,
-  DATABASE_URL: migrateUrl,
-});
 
 run("npx next build");
