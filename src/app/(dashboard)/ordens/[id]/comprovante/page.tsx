@@ -15,7 +15,7 @@ export default async function ComprovantePage({ params }: Params) {
       client: true,
       vehicle: true,
       employee: true,
-      items: { include: { service: true } },
+      items: { include: { service: true, employee: true } },
     },
   });
 
@@ -65,7 +65,14 @@ export default async function ComprovantePage({ params }: Params) {
             <tbody>
               {order.items.map((item) => (
                 <tr key={item.id} className="border-b border-slate-100">
-                  <td className="py-2">{item.serviceName}</td>
+                  <td className="py-2">
+                    {item.serviceName}
+                    {item.employee && (
+                      <span className="block text-xs text-slate-500">
+                        {item.employee.name}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 text-right">{formatCurrency(item.price)}</td>
                 </tr>
               ))}

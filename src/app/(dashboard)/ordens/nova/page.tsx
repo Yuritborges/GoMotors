@@ -12,8 +12,22 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Label, Select, Textarea } from "@/components/ui/input";
 import { SearchCombobox } from "@/components/ui/search-combobox";
 import { PageHeader } from "@/components/layout/page-header";
+import { MobileServicePicker } from "@/components/orders/mobile-service-picker";
+import { buildOrderItems, orderItemsSubtotal } from "@/lib/build-order-items";
+import {
+  countAssignments,
+  type ExtraServiceState,
+  type WorkflowTaskKey,
+  type WorkflowTaskState,
+} from "@/lib/order-workflow";
 import { PlateScanner } from "@/components/vehicles/plate-scanner";
 import Link from "next/link";
+
+const INITIAL_WORKFLOW: Record<WorkflowTaskKey, WorkflowTaskState> = {
+  lavagem: { employeeId: null, open: false },
+  aspiracao: { employeeId: null, open: false },
+  secagem: { employeeId: null, open: false },
+};
 
 type PlateLookup = {
   found: boolean;
@@ -53,8 +67,10 @@ export default function NovaOrdemPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [clientId, setClientId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
-  const [employeeId, setEmployeeId] = useState("");
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  const [workflow, setWorkflow] =
+    useState<Record<WorkflowTaskKey, WorkflowTaskState>>(INITIAL_WORKFLOW);
+  const [extras, setExtras] = useState<Record<string, ExtraServiceState>>({});
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [discount, setDiscount] = useState("0");
   const [paymentMethod, setPaymentMethod] = useState("PENDENTE");
   const [notes, setNotes] = useState("");
@@ -174,8 +190,20 @@ export default function NovaOrdemPage() {
       fetch("/api/employees").then((r) => r.json()),
     ]).then(([c, s, e]) => {
       setClients(c);
-      setServices(s.filter((svc: Service & { active: boolean }) => svc.active !== false));
+      const activeServices = s.filter(
+        (svc: Service & { active: boolean }) => svc.active !== false
+      );
+      setServices(activeServices);
       setEmployees(e);
+      setExtras((prev) => {
+        const next = { ...prev };
+        for (const svc of activeServices) {
+          if (!next[svc.id]) {
+            next[svc.id] = { selected: false, employeeId: null, open: false };
+          }
+        }
+        return next;
+      });
     });
   }, []);
 
@@ -209,23 +237,32 @@ export default function NovaOrdemPage() {
   const selectedClient = clients.find((c) => c.id === clientId);
   const selectedVehicle = selectedClient?.vehicles.find((v) => v.id === vehicleId);
 
-  const subtotal = useMemo(() => {
-    if (!selectedVehicle) return 0;
-    return selectedServices.reduce((sum, serviceId) => {
-      const service = services.find((s) => s.id === serviceId);
-      if (!service) return sum;
-      const vp = service.vehiclePrices.find(
-        (p) => p.vehicleType === selectedVehicle.vehicleType
-      );
-      return sum + (vp?.price ?? service.defaultPrice);
-    }, 0);
-  }, [selectedServices, selectedVehicle, services]);
+  const orderItems = useMemo(() => {
+    if (!selectedVehicle) return [];
+    return buildOrderItems({
+      services,
+      vehicleType: selectedVehicle.vehicleType,
+      workflow,
+      extras,
+    });
+  }, [services, selectedVehicle, workflow, extras]);
+
+  const subtotal = useMemo(() => orderItemsSubtotal(orderItems), [orderItems]);
 
   const total = Math.max(subtotal - Number(discount || 0), 0);
 
+  const assignmentCount = countAssignments(workflow, extras);
+  const extrasMissingEmployee = Object.values(extras).some(
+    (e) => e.selected && !e.employeeId
+  );
+
   const plateReady = Boolean(clientId && vehicleId && !plateLookup?.activeOrder);
   const canSubmit =
-    plateReady && selectedServices.length > 0 && !saving && !plateLookup?.activeOrder;
+    plateReady &&
+    assignmentCount > 0 &&
+    !extrasMissingEmployee &&
+    !saving &&
+    !plateLookup?.activeOrder;
 
   const showMobileSummary = plateReady && plateLookup?.found;
 
@@ -282,16 +319,23 @@ export default function NovaOrdemPage() {
     return client ? `${client.id}:${vehicleId}` : vehicleId;
   }, [clientId, vehicleId, clients]);
 
-  function toggleService(id: string) {
-    setSelectedServices((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
-    );
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!clientId || !vehicleId || selectedServices.length === 0) return;
+    if (!clientId || !vehicleId || orderItems.length === 0) return;
     if (plateLookup?.activeOrder) return;
+
+    const workflowTasks = (
+      Object.entries(workflow) as [WorkflowTaskKey, WorkflowTaskState][]
+    )
+      .filter(([, task]) => task.employeeId)
+      .map(([key, task]) => ({ key, employeeId: task.employeeId! }));
+
+    const serviceItems = Object.entries(extras)
+      .filter(([, state]) => state.selected && state.employeeId)
+      .map(([serviceId, state]) => ({
+        serviceId,
+        employeeId: state.employeeId!,
+      }));
 
     setSaving(true);
     const res = await fetch("/api/orders", {
@@ -300,8 +344,8 @@ export default function NovaOrdemPage() {
       body: JSON.stringify({
         clientId,
         vehicleId,
-        employeeId: employeeId || null,
-        serviceIds: selectedServices,
+        workflowTasks,
+        serviceItems,
         discount: Number(discount || 0),
         paymentMethod,
         notes,
@@ -448,38 +492,28 @@ export default function NovaOrdemPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base sm:text-lg">Equipe</CardTitle>
+            <CardTitle className="text-base sm:text-lg">Serviços e equipe</CardTitle>
+            {!selectedVehicle && (
+              <p className="text-sm text-slate-500">Busque a placa para calcular os preços.</p>
+            )}
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => setEmployeeId("")}
-                className={cn(
-                  "min-h-[48px] rounded-xl border px-2 py-3 text-sm font-medium transition-colors touch-manipulation",
-                  !employeeId
-                    ? "border-sky-500 bg-sky-50 text-sky-800 ring-2 ring-sky-200"
-                    : "border-slate-200 bg-white text-slate-600 active:bg-slate-50"
-                )}
-              >
-                —
-              </button>
-              {employees.map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => setEmployeeId(e.id)}
-                  className={cn(
-                    "min-h-[48px] rounded-xl border px-2 py-3 text-sm font-semibold uppercase tracking-wide transition-colors touch-manipulation",
-                    employeeId === e.id
-                      ? "border-sky-500 bg-sky-600 text-white shadow-sm"
-                      : "border-slate-200 bg-white text-slate-800 active:bg-slate-50"
-                  )}
-                >
-                  {e.name}
-                </button>
-              ))}
-            </div>
+            <MobileServicePicker
+              services={services}
+              employees={employees}
+              vehicleType={selectedVehicle?.vehicleType}
+              workflow={workflow}
+              extras={extras}
+              showMoreOptions={showMoreOptions}
+              onWorkflowChange={setWorkflow}
+              onExtrasChange={setExtras}
+              onShowMoreOptionsChange={setShowMoreOptions}
+            />
+            {extrasMissingEmployee && (
+              <p className="mt-3 text-sm text-amber-800">
+                Escolha o funcionário para cada serviço marcado em opções extras.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -521,68 +555,6 @@ export default function NovaOrdemPage() {
                   : undefined
               }
             />
-            <Field className="sm:col-span-2">
-              <Label>Funcionário responsável</Label>
-              <Select
-                value={employeeId}
-                onChange={(e) => setEmployeeId(e.target.value)}
-              >
-                <option value="">Não definido</option>
-                {employees.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base sm:text-lg">Serviços</CardTitle>
-            {!selectedVehicle && (
-              <p className="text-sm text-slate-500">Busque a placa para ver os preços corretos.</p>
-            )}
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {services.map((service) => {
-                const price =
-                  selectedVehicle
-                    ? service.vehiclePrices.find(
-                        (p) => p.vehicleType === selectedVehicle.vehicleType
-                      )?.price ?? service.defaultPrice
-                    : service.defaultPrice;
-                const selected = selectedServices.includes(service.id);
-
-                return (
-                  <button
-                    key={service.id}
-                    type="button"
-                    onClick={() => toggleService(service.id)}
-                    className={cn(
-                      "flex min-h-[56px] items-center justify-between gap-3 rounded-xl border px-4 py-3.5 text-left transition-colors touch-manipulation active:scale-[0.99]",
-                      selected
-                        ? "border-sky-500 bg-sky-50 ring-2 ring-sky-200"
-                        : "border-slate-200 bg-white hover:bg-slate-50"
-                    )}
-                  >
-                    <span className="text-sm font-medium leading-snug text-slate-900">
-                      {service.name}
-                    </span>
-                    <span
-                      className={cn(
-                        "shrink-0 text-sm font-semibold",
-                        selected ? "text-sky-700" : "text-slate-600"
-                      )}
-                    >
-                      {formatCurrency(price)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
           </CardContent>
         </Card>
 
@@ -693,9 +665,9 @@ export default function NovaOrdemPage() {
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-slate-500">
-              {selectedServices.length === 0
-                ? "Escolha os serviços"
-                : `${selectedServices.length} serviço(s)`}
+              {assignmentCount === 0
+                ? "Marque lavagem, aspiração ou secagem"
+                : `${assignmentCount} etapa(s) / serviço(s)`}
             </p>
             <p className="text-lg font-bold text-slate-900">{formatCurrency(total)}</p>
           </div>

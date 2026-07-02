@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  buildOrderItems,
+  orderItemsSubtotal,
+  primaryOrderEmployeeId,
+  type OrderItemInput,
+} from "@/lib/build-order-items";
 import { endOfDay, startOfDay } from "@/lib/utils";
+import type { WorkflowTaskKey } from "@/lib/order-workflow";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -20,13 +27,20 @@ export async function GET(request: Request) {
       client: true,
       vehicle: true,
       employee: true,
-      items: true,
+      items: { include: { employee: true } },
       payments: true,
     },
     orderBy: { entryAt: "desc" },
   });
 
   return NextResponse.json(orders);
+}
+
+type WorkflowTaskPayload = { key: WorkflowTaskKey; employeeId: string };
+type ServiceItemPayload = { serviceId: string; employeeId: string };
+
+function isWorkflowPayload(body: Record<string, unknown>) {
+  return Array.isArray(body.workflowTasks) || Array.isArray(body.serviceItems);
 }
 
 export async function POST(request: Request) {
@@ -40,35 +54,83 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
   }
 
-  const services = await prisma.service.findMany({
-    where: { id: { in: body.serviceIds } },
-    include: { vehiclePrices: true },
-  });
+  let items: OrderItemInput[] = [];
+  let orderEmployeeId: string | null = body.employeeId || null;
 
-  const items = services.map((service) => {
-    const vehiclePrice = service.vehiclePrices.find(
-      (vp) => vp.vehicleType === vehicle.vehicleType
-    );
-    const price = vehiclePrice?.price ?? service.defaultPrice;
-    return {
-      serviceId: service.id,
-      serviceName: service.name,
-      price,
+  if (isWorkflowPayload(body)) {
+    const workflowTasks = (body.workflowTasks ?? []) as WorkflowTaskPayload[];
+    const serviceItems = (body.serviceItems ?? []) as ServiceItemPayload[];
+
+    const workflow = {
+      lavagem: { employeeId: null as string | null },
+      aspiracao: { employeeId: null as string | null },
+      secagem: { employeeId: null as string | null },
     };
-  });
 
-  const subtotal = items.reduce((sum, item) => sum + item.price, 0);
+    for (const task of workflowTasks) {
+      if (task.key in workflow && task.employeeId) {
+        workflow[task.key as WorkflowTaskKey].employeeId = task.employeeId;
+      }
+    }
+
+    const extras: Record<string, { selected: boolean; employeeId: string | null }> = {};
+    for (const item of serviceItems) {
+      if (item.serviceId && item.employeeId) {
+        extras[item.serviceId] = { selected: true, employeeId: item.employeeId };
+      }
+    }
+
+    const services = await prisma.service.findMany({
+      where: { active: true },
+      include: { vehiclePrices: true },
+    });
+
+    items = buildOrderItems({
+      services,
+      vehicleType: vehicle.vehicleType,
+      workflow,
+      extras,
+    });
+
+    if (items.length === 0) {
+      return NextResponse.json(
+        { error: "Selecione ao menos uma etapa ou serviço com funcionário." },
+        { status: 400 }
+      );
+    }
+
+    orderEmployeeId = primaryOrderEmployeeId(workflow, items);
+  } else {
+    const services = await prisma.service.findMany({
+      where: { id: { in: body.serviceIds ?? [] } },
+      include: { vehiclePrices: true },
+    });
+
+    items = services.map((service) => {
+      const vehiclePrice = service.vehiclePrices.find(
+        (vp) => vp.vehicleType === vehicle.vehicleType
+      );
+      const price = vehiclePrice?.price ?? service.defaultPrice;
+      return {
+        serviceId: service.id,
+        serviceName: service.name,
+        price,
+        employeeId: body.employeeId || null,
+      };
+    });
+  }
+
+  const subtotal = orderItemsSubtotal(items);
   const discount = Number(body.discount ?? 0);
   const total = Math.max(subtotal - discount, 0);
   const paymentMethod = body.paymentMethod ?? "PENDENTE";
-  const paymentStatus =
-    paymentMethod === "PENDENTE" ? "PENDENTE" : "PAGO";
+  const paymentStatus = paymentMethod === "PENDENTE" ? "PENDENTE" : "PAGO";
 
   const order = await prisma.serviceOrder.create({
     data: {
       clientId: body.clientId,
       vehicleId: body.vehicleId,
-      employeeId: body.employeeId || null,
+      employeeId: orderEmployeeId,
       status: "AGUARDANDO",
       subtotal,
       discount,
@@ -76,7 +138,14 @@ export async function POST(request: Request) {
       paymentMethod,
       paymentStatus,
       notes: body.notes || null,
-      items: { create: items },
+      items: {
+        create: items.map((item) => ({
+          serviceId: item.serviceId,
+          serviceName: item.serviceName,
+          price: item.price,
+          employeeId: item.employeeId,
+        })),
+      },
       payments:
         paymentStatus === "PAGO"
           ? {
@@ -92,7 +161,7 @@ export async function POST(request: Request) {
       client: true,
       vehicle: true,
       employee: true,
-      items: true,
+      items: { include: { employee: true } },
       payments: true,
     },
   });
