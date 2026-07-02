@@ -8,6 +8,7 @@ import path from "node:path";
 import * as XLSX from "xlsx";
 import bcrypt from "bcryptjs";
 import { createPrismaClient } from "../src/lib/create-prisma";
+import { TEAM_EMPLOYEES } from "../src/lib/constants";
 import {
   canonicalService,
   cleanModelName,
@@ -169,29 +170,6 @@ function readGastos(): { date: Date; description: string; amount: number }[] {
   return rows;
 }
 
-function readEmployees(): string[] {
-  const wb = XLSX.readFile(path.join(DADOS, "COLABORADORES (1).xlsx"), { cellDates: true });
-  const names: string[] = [];
-
-  for (const sheet of wb.SheetNames) {
-    const data = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(
-      wb.Sheets[sheet],
-      { header: 1, defval: null, raw: false }
-    );
-    let name = sheet.trim();
-    for (const r of data.slice(0, 10)) {
-      if (!r?.[0]) continue;
-      const label = String(r[0]).toUpperCase();
-      if (label.includes("FUNCION")) {
-        name = String(r[1] ?? name).trim() || name;
-        break;
-      }
-    }
-    names.push(name);
-  }
-  return [...new Set(names)];
-}
-
 function extractAmountFromText(text: string): number {
   const br = text.match(/R\$\s*([\d.,]+)/i);
   if (br) return parseAmount(br[0]);
@@ -341,7 +319,7 @@ async function main() {
   const lojas = readLojas();
   const gastos = readGastos();
   const partnerLedger = readPartnerLedger();
-  const employeeNames = readEmployees();
+  const employeeNames = [...TEAM_EMPLOYEES];
 
   const rotativoKeys = new Set(rotativo.map(orderKey));
   const lojasDeduped = lojas.filter((r) => !rotativoKeys.has(orderKey(r)));

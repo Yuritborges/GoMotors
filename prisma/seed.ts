@@ -81,9 +81,7 @@ async function main() {
   });
 
   const employees = await Promise.all(
-    ["Carlos", "Pedro", "Ana"].map((name) =>
-      prisma.employee.create({ data: { name } })
-    )
+    TEAM_EMPLOYEES.map((name) => prisma.employee.create({ data: { name, active: true } }))
   );
 
   for (const svc of services) {

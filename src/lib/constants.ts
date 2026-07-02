@@ -56,3 +56,6 @@ export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   COMPRAS_DIVERSAS: "Compras diversas",
   OUTRO: "Outro",
 };
+
+/** Equipe fixa Go Motors (cadastro de funcion\u00e1rios) */
+export const TEAM_EMPLOYEES = ["GIAN", "EDSON", "GABRIEL"] as const;
