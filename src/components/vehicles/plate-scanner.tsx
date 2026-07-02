@@ -5,8 +5,7 @@ import { createPortal } from "react-dom";
 import { Camera, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  extractPlateFromText,
-  preprocessPlateImage,
+  recognizePlateFromImage,
 } from "@/lib/plate-ocr";
 import { Button } from "@/components/ui/button";
 
@@ -120,28 +119,11 @@ export function PlateScanner({
       });
 
       try {
-        const processed = await preprocessPlateImage(file);
-        const Tesseract = (await import("tesseract.js")).default;
-        const worker = await Tesseract.createWorker("eng", 1, {
-          logger: (m) => {
-            if (m.status === "recognizing text" && typeof m.progress === "number") {
-              setProgress(Math.round(m.progress * 100));
-            }
-          },
-        });
+        const plate = await recognizePlateFromImage(file, setProgress);
 
-        await worker.setParameters({
-          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-          tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        });
-
-        const { data } = await worker.recognize(processed);
-        await worker.terminate();
-
-        const plate = extractPlateFromText(data.text);
         if (!plate) {
           reportError(
-            "Não conseguimos ler a placa. Tente de novo com a placa centralizada e boa luz, ou digite manualmente."
+            "Não conseguimos ler a placa. Enquadre só a placa, use flash se estiver escuro, ou digite manualmente."
           );
           setPhase("idle");
           return;
@@ -336,7 +318,7 @@ export function PlateScanner({
 
         <p className="text-center text-xs text-slate-500 sm:text-left">
           {touchDevice
-            ? "Abre a câmera do celular. Centralize a placa com boa luz."
+            ? "Enquadre só a placa na foto. Use flash se estiver escuro."
             : "Aponte para a placa com boa luz. Você pode corrigir antes de buscar."}
         </p>
 
