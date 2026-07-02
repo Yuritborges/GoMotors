@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatPlate } from "@/lib/utils";
 import {
   PAYMENT_METHOD_LABELS,
   VEHICLE_TYPE_LABELS,
@@ -13,6 +13,20 @@ import { Field, Input, Label, Select, Textarea } from "@/components/ui/input";
 import { SearchCombobox } from "@/components/ui/search-combobox";
 import { PageHeader } from "@/components/layout/page-header";
 import Link from "next/link";
+
+type PlateLookup = {
+  found: boolean;
+  plate?: string;
+  client?: { id: string; name: string; phone: string };
+  vehicle?: { id: string; plate: string; model: string | null; vehicleType: string };
+  activeOrder?: {
+    id: string;
+    status: string;
+    statusLabel: string;
+    total: number;
+    items: string[];
+  };
+};
 
 type Client = {
   id: string;
@@ -44,6 +58,29 @@ export default function NovaOrdemPage() {
   const [paymentMethod, setPaymentMethod] = useState("PENDENTE");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [plateQuery, setPlateQuery] = useState("");
+  const [plateLookup, setPlateLookup] = useState<PlateLookup | null>(null);
+  const [plateLoading, setPlateLoading] = useState(false);
+
+  const lookupPlate = useCallback(async (raw: string) => {
+    const plate = formatPlate(raw);
+    if (plate.length < 6) {
+      setPlateLookup(null);
+      return;
+    }
+    setPlateLoading(true);
+    try {
+      const res = await fetch(`/api/vehicles/lookup?plate=${encodeURIComponent(plate)}`);
+      const data: PlateLookup = await res.json();
+      setPlateLookup(data);
+      if (data.found && data.client && data.vehicle) {
+        setClientId(data.client.id);
+        setVehicleId(data.vehicle.id);
+      }
+    } finally {
+      setPlateLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -143,6 +180,7 @@ export default function NovaOrdemPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!clientId || !vehicleId || selectedServices.length === 0) return;
+    if (plateLookup?.activeOrder) return;
 
     setSaving(true);
     const res = await fetch("/api/orders", {
@@ -171,8 +209,87 @@ export default function NovaOrdemPage() {
     <div className="mx-auto w-full max-w-3xl space-y-6">
       <PageHeader
         title="Nova ordem de serviço"
-        description="Registre a chegada do veículo e os serviços solicitados"
+        description="Digite a placa — o Go Motors busca o cliente e mostra a fila"
       />
+
+      <Card className="border-sky-200 bg-gradient-to-br from-sky-50 to-white">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">Placa do veículo</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              value={plateQuery}
+              onChange={(e) => {
+                const v = formatPlate(e.target.value);
+                setPlateQuery(v);
+                if (v.length >= 7) lookupPlate(v);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  lookupPlate(plateQuery);
+                }
+              }}
+              placeholder="Digite a placa — ex: ABC1D23"
+              className="text-xl font-bold uppercase tracking-widest"
+              autoComplete="off"
+              autoFocus
+              maxLength={7}
+            />
+            <Button
+              type="button"
+              className="shrink-0"
+              disabled={plateLoading || plateQuery.length < 6}
+              onClick={() => lookupPlate(plateQuery)}
+            >
+              {plateLoading ? "Buscando..." : "Buscar"}
+            </Button>
+          </div>
+
+          {plateLookup?.found && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+              <p className="font-semibold text-emerald-900">
+                {plateLookup.client?.name}
+                {plateLookup.vehicle?.model ? ` · ${plateLookup.vehicle.model}` : ""}
+              </p>
+              <p className="text-emerald-800">
+                Placa {plateLookup.vehicle?.plate} ·{" "}
+                {VEHICLE_TYPE_LABELS[plateLookup.vehicle?.vehicleType ?? ""] ??
+                  plateLookup.vehicle?.vehicleType}
+              </p>
+              {plateLookup.activeOrder ? (
+                <div className="mt-2 rounded-md bg-amber-100 px-3 py-2 text-amber-900">
+                  <p className="font-medium">
+                    Já na fila hoje: {plateLookup.activeOrder.statusLabel}
+                  </p>
+                  <p className="text-xs">
+                    {plateLookup.activeOrder.items.join(", ")} —{" "}
+                    {formatCurrency(plateLookup.activeOrder.total)}
+                  </p>
+                  <Link
+                    href="/painel"
+                    className="mt-1 inline-block text-xs font-semibold underline"
+                  >
+                    Ver no painel →
+                  </Link>
+                </div>
+              ) : (
+                <p className="mt-1 text-emerald-700">Pronto para registrar nova entrada.</p>
+              )}
+            </div>
+          )}
+
+          {plateLookup && !plateLookup.found && plateQuery.length >= 6 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Placa não cadastrada.{" "}
+              <Link href="/clientes?novo=1" className="font-semibold underline">
+                Cadastro rápido
+              </Link>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
@@ -301,7 +418,11 @@ export default function NovaOrdemPage() {
         </Card>
 
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
+          <Button
+            type="submit"
+            className="w-full sm:w-auto"
+            disabled={saving || Boolean(plateLookup?.activeOrder)}
+          >
             {saving ? "Salvando..." : "Registrar ordem"}
           </Button>
           <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => router.back()}>
