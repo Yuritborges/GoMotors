@@ -65,6 +65,43 @@ enum EmployeeTransactionType {
   DESCONTO
 }
 
+enum PartnerEntryType {
+  DIVIDA
+  PRODUTO
+  PARCELA
+  PAGAMENTO
+  AJUSTE
+}
+
+model PartnerStore {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries PartnerLedgerEntry[]
+  orders  ServiceOrder[]
+}
+
+model PartnerLedgerEntry {
+  id             String           @id @default(cuid())
+  partnerStoreId String
+  type           PartnerEntryType
+  amount         Float
+  description    String
+  installment    String?
+  date           DateTime
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  partnerStore PartnerStore @relation(fields: [partnerStoreId], references: [id], onDelete: Cascade)
+
+  @@index([partnerStoreId, date])
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -169,11 +206,12 @@ model ServiceVehiclePrice {
 }
 
 model ServiceOrder {
-  id            String        @id @default(cuid())
-  clientId      String
-  vehicleId     String
-  employeeId    String?
-  status        OrderStatus   @default(AGUARDANDO)
+  id             String        @id @default(cuid())
+  clientId       String
+  vehicleId      String
+  employeeId     String?
+  partnerStoreId String?
+  status         OrderStatus   @default(AGUARDANDO)
   subtotal      Float         @default(0)
   discount      Float         @default(0)
   total         Float         @default(0)
@@ -185,9 +223,10 @@ model ServiceOrder {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  client   Client    @relation(fields: [clientId], references: [id])
-  vehicle  Vehicle   @relation(fields: [vehicleId], references: [id])
-  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  client       Client        @relation(fields: [clientId], references: [id])
+  vehicle      Vehicle       @relation(fields: [vehicleId], references: [id])
+  employee     Employee?     @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  partnerStore PartnerStore? @relation(fields: [partnerStoreId], references: [id], onDelete: SetNull)
 
   items    OrderItem[]
   payments Payment[]

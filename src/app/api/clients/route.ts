@@ -6,15 +6,18 @@ export async function GET(request: Request) {
   const search = searchParams.get("search")?.trim();
 
   const clients = await prisma.client.findMany({
-    where: search
-      ? {
-          OR: [
-            { name: { contains: search } },
-            { phone: { contains: search } },
-            { vehicles: { some: { plate: { contains: search.toUpperCase() } } } },
-          ],
-        }
-      : undefined,
+    where: {
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search } },
+              { phone: { contains: search } },
+              { vehicles: { some: { plate: { contains: search.toUpperCase() } } } },
+            ],
+          }
+        : {}),
+      NOT: { notes: { contains: "Parceiro:" } },
+    },
     include: {
       vehicles: true,
       _count: { select: { orders: true } },

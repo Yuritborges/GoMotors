@@ -35,6 +35,7 @@ type RotativoRow = {
   payment: ReturnType<typeof mapPayment>;
   source: string;
   isPartner?: boolean;
+  partnerName?: string;
 };
 
 type VehicleSeed = {
@@ -118,6 +119,7 @@ function readLojas(): RotativoRow[] {
         payment: "PENDENTE",
         source: `LOJAS/${partner}`,
         isPartner: true,
+        partnerName: partner,
       });
     }
   }
@@ -190,6 +192,79 @@ function readEmployees(): string[] {
   return [...new Set(names)];
 }
 
+function extractAmountFromText(text: string): number {
+  const br = text.match(/R\$\s*([\d.,]+)/i);
+  if (br) return parseAmount(br[0]);
+  const nums = text.match(/\d{2,5}/g);
+  if (nums?.length) return parseAmount(nums[nums.length - 1]);
+  return 0;
+}
+
+function inferPartnerEntryType(description: string, installment: string | null): "DIVIDA" | "PRODUTO" | "PARCELA" | "PAGAMENTO" | "AJUSTE" {
+  const u = description.toUpperCase();
+  if (u.includes("PAGUEI") || u.includes("PAGAMENTO") || u.includes("SOMA") && u.includes("PAG")) {
+    return "PAGAMENTO";
+  }
+  if (installment || /\d+\s*(DE|\/)\s*\d+/i.test(description)) return "PARCELA";
+  if (
+    u.includes("PRODUTO") ||
+    u.includes("FELTRO") ||
+    u.includes("ESPUM") ||
+    u.includes("FAIXA") ||
+    u.includes("VOLANTE") ||
+    u.includes("COIFA") ||
+    u.includes("BOLA") ||
+    u.includes("IPHONE") ||
+    u.includes("EXTRATORA")
+  ) {
+    return u.includes("PG") || installment ? "PARCELA" : "PRODUTO";
+  }
+  if (u.includes("FALTA") || u.includes("RECEBER") || u.includes("DEVO") || u.includes("DIVIDA")) {
+    return "DIVIDA";
+  }
+  return "DIVIDA";
+}
+
+function readPartnerLedger(): {
+  partnerName: string;
+  date: Date;
+  type: "DIVIDA" | "PRODUTO" | "PARCELA" | "PAGAMENTO" | "AJUSTE";
+  amount: number;
+  description: string;
+  installment: string | null;
+}[] {
+  const wb = XLSX.readFile(path.join(DADOS, "LOJAS 2026.xlsx"), { cellDates: true });
+  const rows: ReturnType<typeof readPartnerLedger> = [];
+
+  for (const sheet of wb.SheetNames) {
+    const partnerName = sheet.trim();
+    const data = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(
+      wb.Sheets[sheet],
+      { header: 1, defval: null, raw: false }
+    );
+
+    for (let i = 0; i < data.length; i++) {
+      const r = data[i];
+      if (!r) continue;
+      const label = String(r[7] ?? "").trim();
+      if (!label || label.toUpperCase().includes("DÍVIDAS E CART")) continue;
+
+      const installment = r[9] ? String(r[9]).trim() : null;
+      const extra = r[8] ? String(r[8]).trim() : "";
+      const description = [label, extra].filter(Boolean).join(" · ").slice(0, 300);
+      let amount = parseAmount(r[4]) || parseAmount(r[8]) || extractAmountFromText(description);
+      if (amount <= 0) amount = extractAmountFromText(extra) || extractAmountFromText(label);
+      if (amount <= 0) continue;
+
+      const date = parseExcelDate(r[0]) ?? new Date(2026, 0, 15);
+      const type = inferPartnerEntryType(description, installment);
+      rows.push({ partnerName, date, type, amount, description, installment });
+    }
+  }
+
+  return rows;
+}
+
 function orderKey(r: RotativoRow) {
   return `${r.date.toISOString().slice(0, 10)}|${r.plate ?? ""}|${r.serviceRaw}|${r.amount}`;
 }
@@ -247,6 +322,8 @@ async function clearDatabase() {
   await prisma.service.deleteMany();
   await prisma.vehicle.deleteMany();
   await prisma.client.deleteMany();
+  await prisma.partnerLedgerEntry.deleteMany();
+  await prisma.partnerStore.deleteMany();
   await prisma.employeeTransaction.deleteMany();
   await prisma.employee.deleteMany();
   await prisma.expense.deleteMany();
@@ -263,6 +340,7 @@ async function main() {
   const rotativo = readRotativo();
   const lojas = readLojas();
   const gastos = readGastos();
+  const partnerLedger = readPartnerLedger();
   const employeeNames = readEmployees();
 
   const rotativoKeys = new Set(rotativo.map(orderKey));
@@ -271,6 +349,7 @@ async function main() {
 
   console.log(`ROTATIVO: ${rotativo.length} | LOJAS (extras): ${lojasDeduped.length}`);
   console.log(`GASTOS: ${gastos.length} | FUNCIONÁRIOS: ${employeeNames.length}`);
+  console.log(`LANÇAMENTOS LOJAS: ${partnerLedger.length}`);
 
   const vehicleMap = buildVehicleMap(allOrders);
   console.log(`Veículos únicos: ${vehicleMap.size}`);
@@ -390,6 +469,31 @@ async function main() {
     plateToClientId.set(v.plate, client.id);
   }
 
+  console.log("Criando lojas parceiras...");
+  const partnerIds = new Map<string, string>();
+  const lojasWb = XLSX.readFile(path.join(DADOS, "LOJAS 2026.xlsx"), { cellDates: true });
+  for (const sheet of lojasWb.SheetNames) {
+    const name = sheet.trim();
+    const store = await prisma.partnerStore.create({ data: { name, active: true } });
+    partnerIds.set(name, store.id);
+  }
+
+  console.log("Importando lançamentos das lojas (dívidas)...");
+  for (const entry of partnerLedger) {
+    const storeId = partnerIds.get(entry.partnerName);
+    if (!storeId) continue;
+    await prisma.partnerLedgerEntry.create({
+      data: {
+        partnerStoreId: storeId,
+        type: entry.type,
+        amount: entry.amount,
+        description: entry.description,
+        installment: entry.installment,
+        date: entry.date,
+      },
+    });
+  }
+
   console.log("Importando despesas...");
   for (const g of gastos) {
     await prisma.expense.create({
@@ -411,13 +515,16 @@ async function main() {
     const clientId = plateToClientId.get(plate)!;
     const serviceId = serviceIds.get(row.service);
     const total = row.amount > 0 ? row.amount : 0;
-    // Histórico da planilha = serviço já realizado; conta como receita
     const paid = total > 0;
+    const partnerStoreId = row.partnerName
+      ? partnerIds.get(row.partnerName.trim())
+      : undefined;
 
     await prisma.serviceOrder.create({
       data: {
         clientId,
         vehicleId,
+        partnerStoreId: partnerStoreId ?? null,
         status: "ENTREGUE",
         subtotal: total,
         total,

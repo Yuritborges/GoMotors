@@ -57,12 +57,17 @@ export function getMobileMoreNavItems(role: UserRole): NavItem[] {
 
 export function isNavItemActive(href: string, pathname: string): boolean {
   if (href === "/") return pathname === "/";
+  if (href === "/clientes") {
+    return pathname === "/clientes" || pathname.startsWith("/clientes/");
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function getPageTitleFromPath(pathname: string, role: UserRole): string {
   if (pathname === "/ordens/nova") return "Nova ordem";
   if (pathname.includes("/comprovante")) return "Comprovante";
+  if (pathname.startsWith("/clientes/lojas/")) return "Loja parceira";
+  if (pathname === "/clientes/lojas") return "Lojas parceiras";
   if (pathname.startsWith("/clientes/") && pathname !== "/clientes") {
     return "Hist?rico do cliente";
   }

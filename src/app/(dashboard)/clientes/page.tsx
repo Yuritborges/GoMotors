@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Label } from "@/components/ui/input";
 import { PageHeader } from "@/components/layout/page-header";
 import { QuickClientForm } from "@/components/clients/quick-client-form";
+import { ClientesTabs } from "@/components/clients/clientes-tabs";
 
 type Client = {
   id: string;
@@ -65,6 +66,8 @@ export default function ClientesPage() {
           {showForm ? "Fechar" : "+ Cadastro rápido"}
         </Button>
       </PageHeader>
+
+      <ClientesTabs />
 
       {showForm && (
         <Card className="border-sky-200 bg-sky-50/30">
