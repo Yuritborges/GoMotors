@@ -34,6 +34,7 @@ type RotativoRow = {
   paymentRaw: string;
   payment: ReturnType<typeof mapPayment>;
   source: string;
+  isPartner?: boolean;
 };
 
 type VehicleSeed = {
@@ -116,6 +117,7 @@ function readLojas(): RotativoRow[] {
         paymentRaw: partner,
         payment: "PENDENTE",
         source: `LOJAS/${partner}`,
+        isPartner: true,
       });
     }
   }
@@ -133,8 +135,18 @@ function readGastos(): { date: Date; description: string; amount: number }[] {
     const description = String(descRaw ?? "").trim();
     const amount = parseAmount(amountRaw);
     if (!date || !description || amount <= 0) return;
-    if (description.toUpperCase() === "COMPRA" || description.toUpperCase() === "PRODUTO") return;
+    const upper = description.toUpperCase();
+    if (upper === "COMPRA" || upper === "PRODUTO" || upper === "DATA") return;
     rows.push({ date, description, amount });
+  }
+
+  function detectRightBlockStart(headerRow: unknown[]): number {
+    for (let c = 1; c < headerRow.length; c++) {
+      const prev = String(headerRow[c - 1] ?? "").toUpperCase();
+      const cur = String(headerRow[c] ?? "").toUpperCase();
+      if (prev.includes("DATA") && cur.includes("PRODUTO")) return c - 1;
+    }
+    return 8;
   }
 
   for (const sheet of wb.SheetNames) {
@@ -142,12 +154,14 @@ function readGastos(): { date: Date; description: string; amount: number }[] {
       wb.Sheets[sheet],
       { header: 1, defval: null, raw: false }
     );
+    const rightStart = detectRightBlockStart(data[0] ?? []);
     for (let i = 2; i < data.length; i++) {
       const r = data[i];
       if (!r) continue;
       pushRow(r[0], r[1], r[2]);
-      if (r.length > 8) pushRow(r[8], r[9], r[10]);
-      if (r.length > 11) pushRow(r[11], r[12], r[13]);
+      if (r.length > rightStart + 2) {
+        pushRow(r[rightStart], r[rightStart + 1], r[rightStart + 2]);
+      }
     }
   }
   return rows;
@@ -233,6 +247,7 @@ async function clearDatabase() {
   await prisma.service.deleteMany();
   await prisma.vehicle.deleteMany();
   await prisma.client.deleteMany();
+  await prisma.employeeTransaction.deleteMany();
   await prisma.employee.deleteMany();
   await prisma.expense.deleteMany();
   await prisma.product.deleteMany();
@@ -396,7 +411,8 @@ async function main() {
     const clientId = plateToClientId.get(plate)!;
     const serviceId = serviceIds.get(row.service);
     const total = row.amount > 0 ? row.amount : 0;
-    const paid = row.payment !== "PENDENTE";
+    // Histórico da planilha = serviço já realizado; conta como receita
+    const paid = total > 0;
 
     await prisma.serviceOrder.create({
       data: {
@@ -409,9 +425,11 @@ async function main() {
         paymentMethod: row.payment,
         paymentStatus: paid ? "PAGO" : "PENDENTE",
         notes:
-          row.payment === "PENDENTE" && row.paymentRaw
-            ? `Ref: ${row.paymentRaw} (${row.source})`
-            : row.source,
+          row.isPartner
+            ? `Loja parceira: ${row.paymentRaw} (${row.source})`
+            : row.payment === "PENDENTE" && row.paymentRaw
+              ? `Ref: ${row.paymentRaw} (${row.source})`
+              : row.source,
         entryAt: row.date,
         deliveredAt: row.date,
         items: {

@@ -5,8 +5,10 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  BarChart3,
   ClipboardList,
   FileSpreadsheet,
+  HardHat,
   Kanban,
   LayoutDashboard,
   LogOut,
@@ -39,6 +41,8 @@ const iconMap = {
   Wrench,
   Package,
   Wallet,
+  HardHat,
+  BarChart3,
   Receipt,
   FileSpreadsheet,
   UserCog,

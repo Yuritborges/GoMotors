@@ -59,6 +59,12 @@ enum UserRole {
   ATENDENTE
 }
 
+enum EmployeeTransactionType {
+  VALE
+  REEMBOLSO
+  DESCONTO
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -118,7 +124,23 @@ model Employee {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders ServiceOrder[]
+  orders       ServiceOrder[]
+  transactions EmployeeTransaction[]
+}
+
+model EmployeeTransaction {
+  id          String                  @id @default(cuid())
+  employeeId  String
+  type        EmployeeTransactionType
+  amount      Float
+  description String?
+  date        DateTime
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, date])
 }
 
 model Service {
@@ -165,7 +187,7 @@ model ServiceOrder {
 
   client   Client    @relation(fields: [clientId], references: [id])
   vehicle  Vehicle   @relation(fields: [vehicleId], references: [id])
-  employee Employee? @relation(fields: [employeeId], references: [id])
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
 
   items    OrderItem[]
   payments Payment[]

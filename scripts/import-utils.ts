@@ -11,14 +11,49 @@ export function normalizePlate(raw: unknown): string | null {
 
 export function parseExcelDate(value: unknown): Date | null {
   if (value == null || value === "") return null;
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-  const d = new Date(String(value));
-  return Number.isNaN(d.getTime()) ? null : d;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const fixed = new Date(value);
+    const year = fixed.getFullYear();
+    // xlsx interpreta algumas células de 2026 como 2001–2005
+    if (year >= 2001 && year <= 2005) {
+      fixed.setFullYear(2026);
+    }
+    return fixed;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const excelEpoch = new Date(1899, 11, 30);
+    const parsed = new Date(excelEpoch.getTime() + value * 86_400_000);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const s = String(value).trim();
+  const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (br) {
+    let year = parseInt(br[3], 10);
+    if (year < 100) year += year >= 50 ? 1900 : 2000;
+    const parsed = new Date(year, parseInt(br[2], 10) - 1, parseInt(br[1], 10));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const parsed = new Date(s);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (parsed.getFullYear() >= 2001 && parsed.getFullYear() <= 2005) {
+    parsed.setFullYear(2026);
+  }
+  return parsed;
 }
 
 export function parseAmount(value: unknown): number {
   if (value == null || value === "") return 0;
-  const n = Number(String(value).replace(",", "."));
+  let s = String(value).trim().replace(/R\$\s?/gi, "").trim();
+  if (s.includes(",") && s.includes(".")) {
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else if (s.includes(",") && !s.includes(".")) {
+    s = s.replace(",", ".");
+  }
+  const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }
 
