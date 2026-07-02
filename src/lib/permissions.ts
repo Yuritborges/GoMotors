@@ -8,15 +8,15 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   PROPRIETARIO: [
     "Acesso total ao sistema",
-    "Editar servi?os, produtos e pre?os",
-    "Caixa, despesas e relat?rios",
-    "Gerenciar usu?rios (criar, editar e-mail/senha, excluir)",
+    "Editar servi\u00e7os, produtos e pre\u00e7os",
+    "Caixa, despesas e relat\u00f3rios",
+    "Gerenciar usu\u00e1rios (criar, editar e-mail/senha, excluir)",
     "Controle de estoque",
   ],
   ATENDENTE: [
-    "Painel operacional e ordens de servi?o",
-    "Cadastrar clientes e ve?culos",
-    "Consultar servi?os (sem editar pre?os)",
+    "Painel operacional e ordens de servi\u00e7o",
+    "Cadastrar clientes e ve\u00edculos",
+    "Consultar servi\u00e7os (sem editar pre\u00e7os)",
     "Imprimir comprovantes",
   ],
 };
@@ -31,16 +31,16 @@ type NavItem = {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "LayoutDashboard", roles: ["PROPRIETARIO", "ATENDENTE"] },
   { href: "/painel", label: "Painel operacional", icon: "Kanban", roles: ["PROPRIETARIO", "ATENDENTE"] },
-  { href: "/ordens", label: "Ordens de servi?o", icon: "ClipboardList", roles: ["PROPRIETARIO", "ATENDENTE"] },
+  { href: "/ordens", label: "Ordens de servi\u00e7o", icon: "ClipboardList", roles: ["PROPRIETARIO", "ATENDENTE"] },
   { href: "/clientes", label: "Clientes", icon: "Users", roles: ["PROPRIETARIO", "ATENDENTE"] },
-  { href: "/servicos", label: "Servi?os", icon: "Wrench", roles: ["PROPRIETARIO", "ATENDENTE"] },
+  { href: "/servicos", label: "Servi\u00e7os", icon: "Wrench", roles: ["PROPRIETARIO", "ATENDENTE"] },
   { href: "/estoque", label: "Estoque", icon: "Package", roles: ["PROPRIETARIO"] },
   { href: "/caixa", label: "Caixa", icon: "Wallet", roles: ["PROPRIETARIO"] },
-  { href: "/funcionarios", label: "Funcion?rios", icon: "HardHat", roles: ["PROPRIETARIO"] },
+  { href: "/funcionarios", label: "Funcion\u00e1rios", icon: "HardHat", roles: ["PROPRIETARIO"] },
   { href: "/financeiro", label: "Financeiro", icon: "BarChart3", roles: ["PROPRIETARIO"] },
   { href: "/despesas", label: "Despesas", icon: "Receipt", roles: ["PROPRIETARIO"] },
-  { href: "/relatorios", label: "Relat?rios", icon: "FileSpreadsheet", roles: ["PROPRIETARIO"] },
-  { href: "/usuarios", label: "Usu?rios", icon: "UserCog", roles: ["PROPRIETARIO"] },
+  { href: "/relatorios", label: "Relat\u00f3rios", icon: "FileSpreadsheet", roles: ["PROPRIETARIO"] },
+  { href: "/usuarios", label: "Usu\u00e1rios", icon: "UserCog", roles: ["PROPRIETARIO"] },
 ];
 
 export function getNavItemsForRole(role: UserRole): NavItem[] {
@@ -69,7 +69,7 @@ export function getPageTitleFromPath(pathname: string, role: UserRole): string {
   if (pathname.startsWith("/clientes/lojas/")) return "Loja parceira";
   if (pathname === "/clientes/lojas") return "Lojas parceiras";
   if (pathname.startsWith("/clientes/") && pathname !== "/clientes") {
-    return "Hist?rico do cliente";
+    return "Hist\u00f3rico do cliente";
   }
 
   const items = getNavItemsForRole(role);
