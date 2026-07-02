@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Camera, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -18,6 +19,32 @@ type PlateScannerProps = {
 
 type ScanPhase = "idle" | "camera" | "processing";
 
+function isTouchDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia("(pointer: coarse)").matches ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+  );
+}
+
+async function requestCameraStream(): Promise<MediaStream> {
+  const attempts: MediaStreamConstraints[] = [
+    { video: { facingMode: { ideal: "environment" } }, audio: false },
+    { video: { facingMode: "user" }, audio: false },
+    { video: true, audio: false },
+  ];
+
+  let lastError: unknown;
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError ?? new Error("Câmera indisponível");
+}
+
 export function PlateScanner({
   onPlateDetected,
   onError,
@@ -28,23 +55,51 @@ export function PlateScanner({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [touchDevice, setTouchDevice] = useState(false);
 
   const [phase, setPhase] = useState<ScanPhase>("idle");
   const [progress, setProgress] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    setTouchDevice(isTouchDevice());
+  }, []);
 
   const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    setCameraStream(null);
     if (videoRef.current) videoRef.current.srcObject = null;
   }, []);
 
   useEffect(() => {
     return () => {
-      stopCamera();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
-  }, [stopCamera, previewUrl]);
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (phase !== "camera" || !cameraStream) return;
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.srcObject = cameraStream;
+    video.muted = true;
+
+    void video
+      .play()
+      .then(() => setCameraError(null))
+      .catch(() => {
+        setCameraError("Não foi possível exibir a câmera. Use a galeria abaixo.");
+      });
+  }, [phase, cameraStream]);
 
   const reportError = useCallback(
     (message: string) => {
@@ -107,44 +162,57 @@ export function PlateScanner({
     await runOcr(file);
   }
 
-  async function openCamera() {
-    if (disabled) return;
+  function openNativeCamera() {
+    fileInputRef.current?.click();
+  }
+
+  async function openLiveCamera() {
+    if (disabled || cameraStarting) return;
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      fileInputRef.current?.click();
+      openNativeCamera();
       return;
     }
 
+    setCameraStarting(true);
+    setCameraError(null);
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        audio: false,
-      });
+      const stream = await requestCameraStream();
       streamRef.current = stream;
+      setCameraStream(stream);
       setPhase("camera");
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play();
-        }
-      });
     } catch {
-      fileInputRef.current?.click();
+      openNativeCamera();
+    } finally {
+      setCameraStarting(false);
     }
+  }
+
+  async function openCamera() {
+    if (disabled) return;
+
+    // No celular, a câmera nativa do sistema é mais confiável que preview no navegador.
+    if (isTouchDevice()) {
+      openNativeCamera();
+      return;
+    }
+
+    await openLiveCamera();
   }
 
   function closeCamera() {
     stopCamera();
     setPhase("idle");
+    setCameraError(null);
   }
 
   async function captureFromCamera() {
     const video = videoRef.current;
-    if (!video || video.videoWidth === 0) return;
+    if (!video || video.videoWidth === 0) {
+      setCameraError("Aguarde a câmera carregar ou use a galeria.");
+      return;
+    }
 
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
@@ -161,7 +229,67 @@ export function PlateScanner({
     if (blob) await runOcr(blob);
   }
 
-  const busy = phase === "processing" || disabled;
+  const busy = phase === "processing" || disabled || cameraStarting;
+
+  const cameraOverlay =
+    phase === "camera" ? (
+      <div className="fixed inset-0 z-[300] flex flex-col bg-black">
+        <div className="flex items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white">
+          <p className="font-medium">Enquadre a placa</p>
+          <button
+            type="button"
+            aria-label="Fechar câmera"
+            className="rounded-lg p-2 hover:bg-white/10 touch-manipulation"
+            onClick={closeCamera}
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+
+        <div className="relative min-h-0 flex-1 bg-black">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
+            <div className="h-16 w-full max-w-xs rounded-lg border-2 border-dashed border-white/80 bg-black/20" />
+          </div>
+          {cameraStarting && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white">
+              <Loader2 className="mr-2 h-6 w-6 animate-spin" />
+              Abrindo câmera…
+            </div>
+          )}
+        </div>
+
+        {cameraError && (
+          <p className="bg-red-950/80 px-4 py-2 text-center text-sm text-red-200">
+            {cameraError}
+          </p>
+        )}
+
+        <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <Button
+            type="button"
+            className="h-14 w-full text-base"
+            disabled={cameraStarting}
+            onClick={() => void captureFromCamera()}
+          >
+            Capturar placa
+          </Button>
+          <button
+            type="button"
+            className="mt-3 w-full text-center text-sm text-white/80 underline touch-manipulation"
+            onClick={openNativeCamera}
+          >
+            Ou escolher da galeria
+          </button>
+        </div>
+      </div>
+    ) : null;
 
   return (
     <>
@@ -193,6 +321,11 @@ export function PlateScanner({
               <Loader2 className="h-5 w-5 animate-spin" />
               Lendo placa… {progress > 0 ? `${progress}%` : ""}
             </>
+          ) : cameraStarting ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Abrindo câmera…
+            </>
           ) : (
             <>
               <Camera className="h-5 w-5" />
@@ -202,7 +335,9 @@ export function PlateScanner({
         </Button>
 
         <p className="text-center text-xs text-slate-500 sm:text-left">
-          Aponte para a placa com boa luz. Você pode corrigir antes de buscar.
+          {touchDevice
+            ? "Abre a câmera do celular. Centralize a placa com boa luz."
+            : "Aponte para a placa com boa luz. Você pode corrigir antes de buscar."}
         </p>
 
         {previewUrl && phase === "processing" && (
@@ -217,50 +352,7 @@ export function PlateScanner({
         )}
       </div>
 
-      {phase === "camera" && (
-        <div className="fixed inset-0 z-[300] flex flex-col bg-black">
-          <div className="flex items-center justify-between px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white">
-            <p className="font-medium">Enquadre a placa</p>
-            <button
-              type="button"
-              aria-label="Fechar câmera"
-              className="rounded-lg p-2 hover:bg-white/10 touch-manipulation"
-              onClick={closeCamera}
-            >
-              <X className="h-6 w-6" />
-            </button>
-          </div>
-
-          <div className="relative flex-1 overflow-hidden">
-            <video
-              ref={videoRef}
-              playsInline
-              muted
-              className="h-full w-full object-cover"
-            />
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
-              <div className="h-16 w-full max-w-xs rounded-lg border-2 border-dashed border-white/80 bg-black/20" />
-            </div>
-          </div>
-
-          <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <Button
-              type="button"
-              className="h-14 w-full text-base"
-              onClick={() => void captureFromCamera()}
-            >
-              Capturar placa
-            </Button>
-            <button
-              type="button"
-              className="mt-3 w-full text-center text-sm text-white/80 underline touch-manipulation"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Ou escolher da galeria
-            </button>
-          </div>
-        </div>
-      )}
+      {mounted && cameraOverlay ? createPortal(cameraOverlay, document.body) : null}
     </>
   );
 }
