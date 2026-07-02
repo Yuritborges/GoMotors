@@ -76,8 +76,8 @@ export default async function DashboardPage() {
               <MiniStat label="Em lavagem" value={today.statusCounts.emLavagem} color="text-blue-600" />
               <MiniStat label="Prontos" value={today.statusCounts.pronto} color="text-emerald-600" />
             </div>
-            <Link href="/painel" className="text-sm font-medium text-sky-600 hover:text-sky-700">
-              Abrir painel Kanban →
+            <Link href="/display" className="text-sm font-medium text-sky-600 hover:text-sky-700">
+              Abrir painel de Tela (TV) →
             </Link>
           </CardContent>
         </Card>
