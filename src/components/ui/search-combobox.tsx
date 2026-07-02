@@ -20,6 +20,8 @@ type SearchComboboxProps = {
   placeholder?: string;
   disabled?: boolean;
   emptyMessage?: string;
+  /** Rótulo exibido quando value está definido mas a opção ainda não carregou */
+  fallbackLabel?: string;
   className?: string;
 };
 
@@ -52,6 +54,7 @@ export function SearchCombobox({
   placeholder = "Digite para buscar...",
   disabled = false,
   emptyMessage = "Nenhum resultado",
+  fallbackLabel,
   className,
 }: SearchComboboxProps) {
   const listId = useId();
@@ -95,7 +98,7 @@ export function SearchCombobox({
     setQuery("");
   }
 
-  const inputValue = open ? query : selected?.label ?? "";
+  const inputValue = open ? query : selected?.label ?? fallbackLabel ?? "";
 
   return (
     <div ref={rootRef} className={cn("relative space-y-1", className)}>
@@ -109,7 +112,7 @@ export function SearchCombobox({
         aria-autocomplete="list"
         autoComplete="off"
         disabled={disabled}
-        placeholder={selected ? selected.label : placeholder}
+        placeholder={selected || fallbackLabel ? undefined : placeholder}
         value={inputValue}
         onChange={(e) => {
           setQuery(e.target.value);

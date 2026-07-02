@@ -74,13 +74,96 @@ export default function NovaOrdemPage() {
       const data: PlateLookup = await res.json();
       setPlateLookup(data);
       if (data.found && data.client && data.vehicle) {
-        setClientId(data.client.id);
-        setVehicleId(data.vehicle.id);
+        const foundClient = data.client;
+        const foundVehicle = data.vehicle;
+        setClientId(foundClient.id);
+        setVehicleId(foundVehicle.id);
+        setClients((prev) => {
+          const existing = prev.find((c) => c.id === foundClient.id);
+          const vehicleEntry = {
+            id: foundVehicle.id,
+            plate: foundVehicle.plate,
+            vehicleType: foundVehicle.vehicleType,
+          };
+          if (existing) {
+            const hasVehicle = existing.vehicles.some((v) => v.id === vehicleEntry.id);
+            if (hasVehicle) return prev;
+            return prev.map((c) =>
+              c.id === foundClient.id
+                ? { ...c, vehicles: [...c.vehicles, vehicleEntry] }
+                : c
+            );
+          }
+          return [
+            ...prev,
+            {
+              id: foundClient.id,
+              name: foundClient.name,
+              phone: foundClient.phone,
+              vehicles: [vehicleEntry],
+            },
+          ];
+        });
       }
     } finally {
       setPlateLoading(false);
     }
   }, []);
+
+  function applyLookupToForm(data: PlateLookup) {
+    if (!data.client || !data.vehicle) return;
+    const foundClient = data.client;
+    const foundVehicle = data.vehicle;
+    setClientId(foundClient.id);
+    setVehicleId(foundVehicle.id);
+    setClients((prev) => {
+      const existing = prev.find((c) => c.id === foundClient.id);
+      const vehicleEntry = {
+        id: foundVehicle.id,
+        plate: foundVehicle.plate,
+        vehicleType: foundVehicle.vehicleType,
+      };
+      if (existing) {
+        const hasVehicle = existing.vehicles.some((v) => v.id === vehicleEntry.id);
+        if (hasVehicle) return prev;
+        return prev.map((c) =>
+          c.id === foundClient.id
+            ? { ...c, vehicles: [...c.vehicles, vehicleEntry] }
+            : c
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: foundClient.id,
+          name: foundClient.name,
+          phone: foundClient.phone,
+          vehicles: [vehicleEntry],
+        },
+      ];
+    });
+  }
+
+  function mergeClientIntoList(client: Client) {
+    setClients((prev) => {
+      if (prev.some((c) => c.id === client.id)) {
+        return prev.map((c) =>
+          c.id === client.id
+            ? {
+                ...c,
+                vehicles: [
+                  ...c.vehicles,
+                  ...client.vehicles.filter(
+                    (v) => !c.vehicles.some((ev) => ev.id === v.id)
+                  ),
+                ],
+              }
+            : c
+        );
+      }
+      return [...prev, client];
+    });
+  }
 
   useEffect(() => {
     Promise.all([
@@ -99,6 +182,26 @@ export default function NovaOrdemPage() {
     const preVehicleId = searchParams.get("vehicleId");
     if (preClientId) setClientId(preClientId);
     if (preVehicleId) setVehicleId(preVehicleId);
+
+    if (preClientId) {
+      fetch(`/api/clients/${preClientId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data) return;
+          mergeClientIntoList({
+            id: data.id,
+            name: data.name,
+            phone: data.phone,
+            vehicles: data.vehicles.map(
+              (v: { id: string; plate: string; vehicleType: string }) => ({
+                id: v.id,
+                plate: v.plate,
+                vehicleType: v.vehicleType,
+              })
+            ),
+          });
+        });
+    }
   }, [searchParams]);
 
   const selectedClient = clients.find((c) => c.id === clientId);
@@ -248,7 +351,11 @@ export default function NovaOrdemPage() {
           </div>
 
           {plateLookup?.found && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+            <button
+              type="button"
+              onClick={() => applyLookupToForm(plateLookup)}
+              className="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-left text-sm transition-colors hover:bg-emerald-100/80 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            >
               <p className="font-semibold text-emerald-900">
                 {plateLookup.client?.name}
                 {plateLookup.vehicle?.model ? ` · ${plateLookup.vehicle.model}` : ""}
@@ -270,14 +377,19 @@ export default function NovaOrdemPage() {
                   <Link
                     href="/painel"
                     className="mt-1 inline-block text-xs font-semibold underline"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     Ver no painel →
                   </Link>
                 </div>
               ) : (
-                <p className="mt-1 text-emerald-700">Pronto para registrar nova entrada.</p>
+                <p className="mt-1 text-emerald-700">
+                  {clientId === plateLookup.client?.id
+                    ? "Cliente selecionado — escolha os serviços abaixo."
+                    : "Toque aqui para selecionar e iniciar o serviço."}
+                </p>
               )}
-            </div>
+            </button>
           )}
 
           {plateLookup && !plateLookup.found && plateQuery.length >= 6 && (
@@ -310,6 +422,11 @@ export default function NovaOrdemPage() {
               onChange={handleClientChange}
               placeholder="Nome, telefone ou placa..."
               emptyMessage="Nenhum cliente encontrado"
+              fallbackLabel={
+                plateLookup?.found && clientId === plateLookup.client?.id
+                  ? plateLookup.client.name
+                  : undefined
+              }
             />
             <SearchCombobox
               label="Veículo"
@@ -319,6 +436,11 @@ export default function NovaOrdemPage() {
               placeholder={clientId ? "Digite a placa..." : "Placa ou nome do cliente..."}
               disabled={clients.length === 0}
               emptyMessage="Nenhum veículo encontrado"
+              fallbackLabel={
+                plateLookup?.found && vehicleId === plateLookup.vehicle?.id
+                  ? `${plateLookup.vehicle.plate} · ${VEHICLE_TYPE_LABELS[plateLookup.vehicle.vehicleType] ?? plateLookup.vehicle.vehicleType}`
+                  : undefined
+              }
             />
             <Field className="sm:col-span-2">
               <Label>Funcionário responsável</Label>
