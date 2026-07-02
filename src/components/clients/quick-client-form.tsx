@@ -7,6 +7,7 @@ import { formatPlate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Label, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { PlateScanner } from "@/components/vehicles/plate-scanner";
 
 const QUICK_VEHICLE_TYPES = ["CARRO", "SUV", "MOTO", "CAMINHONETE"] as const;
 
@@ -15,6 +16,8 @@ type QuickClientFormProps = {
   onCancel?: () => void;
   /** Após salvar, redireciona para nova ordem com cliente/veículo selecionados */
   redirectToOrder?: boolean;
+  /** Placa pré-preenchida (ex.: vinda do OCR ou link) */
+  initialPlate?: string;
   className?: string;
 };
 
@@ -32,13 +35,18 @@ export function QuickClientForm({
   onSuccess,
   onCancel,
   redirectToOrder = false,
+  initialPlate = "",
   className,
 }: QuickClientFormProps) {
   const router = useRouter();
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState({
+    ...emptyForm,
+    plate: formatPlate(initialPlate),
+  });
   const [showDetails, setShowDetails] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [ocrError, setOcrError] = useState("");
 
   async function handleSubmit(openOrder: boolean) {
     setError("");
@@ -124,6 +132,21 @@ export function QuickClientForm({
           maxLength={7}
         />
       </Field>
+
+      <PlateScanner
+        disabled={saving}
+        onPlateDetected={(plate) => {
+          setOcrError("");
+          setForm((prev) => ({ ...prev, plate }));
+        }}
+        onError={setOcrError}
+      />
+
+      {ocrError && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">
+          {ocrError}
+        </p>
+      )}
 
       <Field>
         <Label>Nome do cliente *</Label>

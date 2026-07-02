@@ -79,6 +79,7 @@ export default function ClientesPage() {
           </CardHeader>
           <CardContent>
             <QuickClientForm
+              initialPlate={searchParams.get("placa") ?? ""}
               onSuccess={handleSaved}
               onCancel={() => setShowForm(false)}
             />

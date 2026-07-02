@@ -14,8 +14,10 @@ import {
   cleanModelName,
   clientDisplayName,
   inferVehicleType,
+  isTeamValeExpense,
   mapExpenseCategory,
   mapPayment,
+  matchEmployeeFromVale,
   normalizePlate,
   parseAmount,
   parseExcelDate,
@@ -317,7 +319,9 @@ async function main() {
   console.log("Lendo planilhas...");
   const rotativo = readRotativo();
   const lojas = readLojas();
-  const gastos = readGastos();
+  const gastosAll = readGastos();
+  const employeeVales = gastosAll.filter((g) => matchEmployeeFromVale(g.description));
+  const gastos = gastosAll.filter((g) => !isTeamValeExpense(g.description));
   const partnerLedger = readPartnerLedger();
   const employeeNames = [...TEAM_EMPLOYEES];
 
@@ -326,7 +330,9 @@ async function main() {
   const allOrders = [...rotativo, ...lojasDeduped];
 
   console.log(`ROTATIVO: ${rotativo.length} | LOJAS (extras): ${lojasDeduped.length}`);
-  console.log(`GASTOS: ${gastos.length} | FUNCIONÁRIOS: ${employeeNames.length}`);
+  console.log(
+    `GASTOS: ${gastos.length} (+ ${employeeVales.length} vales → funcionários) | FUNCIONÁRIOS: ${employeeNames.length}`
+  );
   console.log(`LANÇAMENTOS LOJAS: ${partnerLedger.length}`);
 
   const vehicleMap = buildVehicleMap(allOrders);
@@ -468,6 +474,23 @@ async function main() {
         description: entry.description,
         installment: entry.installment,
         date: entry.date,
+      },
+    });
+  }
+
+  console.log("Importando vales da equipe...");
+  const employeeByName = new Map(employees.map((e) => [e.name, e.id]));
+  for (const v of employeeVales) {
+    const name = matchEmployeeFromVale(v.description);
+    const empId = name ? employeeByName.get(name) : undefined;
+    if (!empId) continue;
+    await prisma.employeeTransaction.create({
+      data: {
+        employeeId: empId,
+        type: "VALE",
+        amount: v.amount,
+        date: v.date,
+        description: v.description.slice(0, 200),
       },
     });
   }

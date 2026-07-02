@@ -32,6 +32,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "LayoutDashboard", roles: ["PROPRIETARIO", "ATENDENTE"] },
   { href: "/painel", label: "Painel operacional", icon: "Kanban", roles: ["PROPRIETARIO", "ATENDENTE"] },
   { href: "/ordens", label: "Ordens de servi\u00e7o", icon: "ClipboardList", roles: ["PROPRIETARIO", "ATENDENTE"] },
+  { href: "/ordens/nova", label: "Nova ordem", icon: "Plus", roles: ["PROPRIETARIO", "ATENDENTE"] },
   { href: "/clientes", label: "Clientes", icon: "Users", roles: ["PROPRIETARIO", "ATENDENTE"] },
   { href: "/servicos", label: "Servi\u00e7os", icon: "Wrench", roles: ["PROPRIETARIO", "ATENDENTE"] },
   { href: "/estoque", label: "Estoque", icon: "Package", roles: ["PROPRIETARIO"] },
@@ -48,7 +49,7 @@ export function getNavItemsForRole(role: UserRole): NavItem[] {
 }
 
 /** Atalhos fixos na barra inferior do mobile */
-export const MOBILE_BOTTOM_NAV_HREFS = ["/painel", "/ordens", "/clientes"] as const;
+export const MOBILE_BOTTOM_NAV_HREFS = ["/painel", "/ordens/nova", "/clientes"] as const;
 
 export function getMobileMoreNavItems(role: UserRole): NavItem[] {
   const bottom = new Set<string>(MOBILE_BOTTOM_NAV_HREFS);
@@ -59,6 +60,12 @@ export function isNavItemActive(href: string, pathname: string): boolean {
   if (href === "/") return pathname === "/";
   if (href === "/clientes") {
     return pathname === "/clientes" || pathname.startsWith("/clientes/");
+  }
+  if (href === "/ordens") {
+    return (
+      pathname === "/ordens" ||
+      (pathname.startsWith("/ordens/") && !pathname.startsWith("/ordens/nova"))
+    );
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }

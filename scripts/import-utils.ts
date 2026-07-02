@@ -110,6 +110,29 @@ export function mapPayment(raw: unknown): PaymentMethod {
   return "PENDENTE";
 }
 
+import { TEAM_EMPLOYEES } from "../src/lib/constants";
+
+/** Mapeia descrição "VALE GABRIEL" etc. para nome da equipe fixa, ou null. */
+export function matchEmployeeFromVale(description: string): string | null {
+  const u = description
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (!u.includes("VALE")) return null;
+
+  for (const name of TEAM_EMPLOYEES) {
+    if (u.includes(`VALE ${name}`) || u.includes(`VALE${name}`)) return name;
+  }
+  for (const name of TEAM_EMPLOYEES) {
+    if (u.includes(name)) return name;
+  }
+  return null;
+}
+
+export function isTeamValeExpense(description: string): boolean {
+  return matchEmployeeFromVale(description) !== null;
+}
+
 export function mapExpenseCategory(description: unknown): ExpenseCategory {
   const d = String(description ?? "")
     .toUpperCase()

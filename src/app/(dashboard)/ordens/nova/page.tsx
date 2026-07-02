@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formatCurrency, formatPlate } from "@/lib/utils";
+import { cn, formatCurrency, formatPlate } from "@/lib/utils";
 import {
   PAYMENT_METHOD_LABELS,
   VEHICLE_TYPE_LABELS,
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Label, Select, Textarea } from "@/components/ui/input";
 import { SearchCombobox } from "@/components/ui/search-combobox";
 import { PageHeader } from "@/components/layout/page-header";
+import { PlateScanner } from "@/components/vehicles/plate-scanner";
 import Link from "next/link";
 
 type PlateLookup = {
@@ -61,6 +62,7 @@ export default function NovaOrdemPage() {
   const [plateQuery, setPlateQuery] = useState("");
   const [plateLookup, setPlateLookup] = useState<PlateLookup | null>(null);
   const [plateLoading, setPlateLoading] = useState(false);
+  const [plateOcrError, setPlateOcrError] = useState("");
 
   const lookupPlate = useCallback(async (raw: string) => {
     const plate = formatPlate(raw);
@@ -221,6 +223,12 @@ export default function NovaOrdemPage() {
 
   const total = Math.max(subtotal - Number(discount || 0), 0);
 
+  const plateReady = Boolean(clientId && vehicleId && !plateLookup?.activeOrder);
+  const canSubmit =
+    plateReady && selectedServices.length > 0 && !saving && !plateLookup?.activeOrder;
+
+  const showMobileSummary = plateReady && plateLookup?.found;
+
   const clientOptions = useMemo(
     () =>
       clients.map((c) => ({
@@ -309,17 +317,17 @@ export default function NovaOrdemPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-3xl space-y-4 pb-28 sm:space-y-6 sm:pb-0">
       <PageHeader
-        title="Nova ordem de serviço"
-        description="Digite a placa — o Go Motors busca o cliente e mostra a fila"
+        title="Nova ordem"
+        description="Placa → serviços → registrar"
       />
 
-      <Card className="border-sky-200 bg-gradient-to-br from-sky-50 to-white">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Placa do veículo</CardTitle>
+      <Card className="border-sky-200 bg-gradient-to-br from-sky-50 to-white shadow-sm">
+        <CardHeader className="pb-2 pt-4 sm:pt-6">
+          <CardTitle className="text-lg sm:text-xl">Placa do veículo</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-3 pb-4 sm:pb-6">
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
               value={plateQuery}
@@ -334,15 +342,16 @@ export default function NovaOrdemPage() {
                   lookupPlate(plateQuery);
                 }
               }}
-              placeholder="Digite a placa — ex: ABC1D23"
-              className="text-xl font-bold uppercase tracking-widest"
+              placeholder="ABC1D23"
+              className="h-14 text-center text-2xl font-bold uppercase tracking-[0.2em] sm:h-11 sm:text-left sm:text-xl sm:tracking-widest"
               autoComplete="off"
               autoFocus
+              inputMode="text"
               maxLength={7}
             />
             <Button
               type="button"
-              className="shrink-0"
+              className="hidden h-11 shrink-0 sm:inline-flex"
               disabled={plateLoading || plateQuery.length < 6}
               onClick={() => lookupPlate(plateQuery)}
             >
@@ -350,11 +359,31 @@ export default function NovaOrdemPage() {
             </Button>
           </div>
 
+          <PlateScanner
+            disabled={plateLoading}
+            onPlateDetected={(plate) => {
+              setPlateOcrError("");
+              setPlateQuery(plate);
+              void lookupPlate(plate);
+            }}
+            onError={setPlateOcrError}
+          />
+
+          {plateOcrError && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">
+              {plateOcrError}
+            </p>
+          )}
+
+          {plateLoading && (
+            <p className="text-center text-sm text-sky-700 sm:text-left">Buscando placa...</p>
+          )}
+
           {plateLookup?.found && (
             <button
               type="button"
               onClick={() => applyLookupToForm(plateLookup)}
-              className="w-full rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-left text-sm transition-colors hover:bg-emerald-100/80 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-left text-sm transition-colors hover:bg-emerald-100/80 active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-emerald-400 touch-manipulation"
             >
               <p className="font-semibold text-emerald-900">
                 {plateLookup.client?.name}
@@ -385,17 +414,20 @@ export default function NovaOrdemPage() {
               ) : (
                 <p className="mt-1 text-emerald-700">
                   {clientId === plateLookup.client?.id
-                    ? "Cliente selecionado — escolha os serviços abaixo."
-                    : "Toque aqui para selecionar e iniciar o serviço."}
+                    ? "Selecionado — escolha os serviços abaixo."
+                    : "Toque para confirmar e escolher serviços."}
                 </p>
               )}
             </button>
           )}
 
-          {plateLookup && !plateLookup.found && plateQuery.length >= 6 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {plateLookup && !plateLookup.found && plateQuery.length >= 6 && !plateLoading && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               Placa não cadastrada.{" "}
-              <Link href="/clientes?novo=1" className="font-semibold underline">
+              <Link
+                href={`/clientes?novo=1&placa=${encodeURIComponent(plateQuery)}`}
+                className="font-semibold underline"
+              >
                 Cadastro rápido
               </Link>
             </div>
@@ -403,8 +435,55 @@ export default function NovaOrdemPage() {
         </CardContent>
       </Card>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form id="nova-ordem-form" onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+        {showMobileSummary && selectedClient && selectedVehicle && (
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 lg:hidden">
+            <p className="font-semibold text-slate-900">{selectedClient.name}</p>
+            <p className="text-sm text-slate-600">
+              {selectedVehicle.plate} ·{" "}
+              {VEHICLE_TYPE_LABELS[selectedVehicle.vehicleType] ?? selectedVehicle.vehicleType}
+            </p>
+          </div>
+        )}
+
         <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base sm:text-lg">Equipe</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => setEmployeeId("")}
+                className={cn(
+                  "min-h-[48px] rounded-xl border px-2 py-3 text-sm font-medium transition-colors touch-manipulation",
+                  !employeeId
+                    ? "border-sky-500 bg-sky-50 text-sky-800 ring-2 ring-sky-200"
+                    : "border-slate-200 bg-white text-slate-600 active:bg-slate-50"
+                )}
+              >
+                —
+              </button>
+              {employees.map((e) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() => setEmployeeId(e.id)}
+                  className={cn(
+                    "min-h-[48px] rounded-xl border px-2 py-3 text-sm font-semibold uppercase tracking-wide transition-colors touch-manipulation",
+                    employeeId === e.id
+                      ? "border-sky-500 bg-sky-600 text-white shadow-sm"
+                      : "border-slate-200 bg-white text-slate-800 active:bg-slate-50"
+                  )}
+                >
+                  {e.name}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hidden lg:block">
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle>Cliente e veículo</CardTitle>
             <Link
@@ -460,73 +539,129 @@ export default function NovaOrdemPage() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Serviços</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base sm:text-lg">Serviços</CardTitle>
+            {!selectedVehicle && (
+              <p className="text-sm text-slate-500">Busque a placa para ver os preços corretos.</p>
+            )}
           </CardHeader>
-          <CardContent className="space-y-2">
-            {services.map((service) => {
-              const price =
-                selectedVehicle
-                  ? service.vehiclePrices.find(
-                      (p) => p.vehicleType === selectedVehicle.vehicleType
-                    )?.price ?? service.defaultPrice
-                  : service.defaultPrice;
+          <CardContent>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {services.map((service) => {
+                const price =
+                  selectedVehicle
+                    ? service.vehiclePrices.find(
+                        (p) => p.vehicleType === selectedVehicle.vehicleType
+                      )?.price ?? service.defaultPrice
+                    : service.defaultPrice;
+                const selected = selectedServices.includes(service.id);
 
-              return (
-                <label
-                  key={service.id}
-                  className="flex cursor-pointer flex-col gap-2 rounded-lg border border-slate-200 px-4 py-3 hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedServices.includes(service.id)}
-                      onChange={() => toggleService(service.id)}
-                    />
-                    <span className="text-sm font-medium">{service.name}</span>
-                  </div>
-                  <span className="text-sm text-slate-600">
-                    {formatCurrency(price)}
-                  </span>
-                </label>
-              );
-            })}
+                return (
+                  <button
+                    key={service.id}
+                    type="button"
+                    onClick={() => toggleService(service.id)}
+                    className={cn(
+                      "flex min-h-[56px] items-center justify-between gap-3 rounded-xl border px-4 py-3.5 text-left transition-colors touch-manipulation active:scale-[0.99]",
+                      selected
+                        ? "border-sky-500 bg-sky-50 ring-2 ring-sky-200"
+                        : "border-slate-200 bg-white hover:bg-slate-50"
+                    )}
+                  >
+                    <span className="text-sm font-medium leading-snug text-slate-900">
+                      {service.name}
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 text-sm font-semibold",
+                        selected ? "text-sky-700" : "text-slate-600"
+                      )}
+                    >
+                      {formatCurrency(price)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Pagamento</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base sm:text-lg">Pagamento</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Field>
-              <Label>Desconto (R$)</Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
-              />
-            </Field>
-            <Field>
-              <Label>Forma de pagamento</Label>
-              <Select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-              >
-                {Object.entries(PAYMENT_METHOD_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field className="sm:col-span-2">
-              <Label>Observações</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </Field>
-            <div className="sm:col-span-2 rounded-lg bg-slate-50 p-4">
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-2 sm:hidden">
+              {Object.entries(PAYMENT_METHOD_LABELS).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setPaymentMethod(key)}
+                  className={cn(
+                    "min-h-[44px] rounded-xl border px-2 py-2.5 text-xs font-medium touch-manipulation",
+                    paymentMethod === key
+                      ? "border-sky-500 bg-sky-600 text-white"
+                      : "border-slate-200 bg-white text-slate-700"
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <details className="group sm:hidden">
+              <summary className="cursor-pointer list-none text-sm font-medium text-sky-700 touch-manipulation">
+                Desconto e observações
+              </summary>
+              <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+                <Field>
+                  <Label>Desconto (R$)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                  />
+                </Field>
+                <Field>
+                  <Label>Observações</Label>
+                  <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+                </Field>
+              </div>
+            </details>
+
+            <div className="hidden gap-4 sm:grid sm:grid-cols-2">
+              <Field>
+                <Label>Desconto (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={discount}
+                  onChange={(e) => setDiscount(e.target.value)}
+                />
+              </Field>
+              <Field>
+                <Label>Forma de pagamento</Label>
+                <Select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                >
+                  {Object.entries(PAYMENT_METHOD_LABELS).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field className="sm:col-span-2">
+                <Label>Observações</Label>
+                <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+              </Field>
+            </div>
+
+            <div className="rounded-xl bg-slate-50 p-4">
               <div className="flex justify-between text-sm">
                 <span>Subtotal</span>
                 <span>{formatCurrency(subtotal)}</span>
@@ -539,19 +674,41 @@ export default function NovaOrdemPage() {
           </CardContent>
         </Card>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Button
-            type="submit"
-            className="w-full sm:w-auto"
-            disabled={saving || Boolean(plateLookup?.activeOrder)}
-          >
+        <div className="hidden flex-col gap-3 sm:flex sm:flex-row">
+          <Button type="submit" className="w-full sm:w-auto" disabled={!canSubmit}>
             {saving ? "Salvando..." : "Registrar ordem"}
           </Button>
-          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => router.back()}>
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full sm:w-auto"
+            onClick={() => router.back()}
+          >
             Cancelar
           </Button>
         </div>
       </form>
+
+      <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-40 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden">
+        <div className="mx-auto flex max-w-3xl items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-slate-500">
+              {selectedServices.length === 0
+                ? "Escolha os serviços"
+                : `${selectedServices.length} serviço(s)`}
+            </p>
+            <p className="text-lg font-bold text-slate-900">{formatCurrency(total)}</p>
+          </div>
+          <Button
+            type="submit"
+            form="nova-ordem-form"
+            className="h-12 min-w-[140px] shrink-0 px-6 text-base"
+            disabled={!canSubmit}
+          >
+            {saving ? "..." : "Registrar"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

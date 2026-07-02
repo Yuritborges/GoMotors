@@ -14,6 +14,7 @@ import {
   LogOut,
   MoreHorizontal,
   Package,
+  Plus,
   Receipt,
   UserCog,
   Users,
@@ -37,6 +38,7 @@ const iconMap = {
   LayoutDashboard,
   Kanban,
   ClipboardList,
+  Plus,
   Users,
   Wrench,
   Package,
@@ -51,7 +53,7 @@ const iconMap = {
 
 const BOTTOM_LABELS: Record<string, string> = {
   "/painel": "Painel",
-  "/ordens": "Ordens",
+  "/ordens/nova": "Nova OS",
   "/clientes": "Clientes",
 };
 
@@ -76,10 +78,40 @@ export function MobileBottomNav({ user, moreOpen, onMoreOpen }: MobileBottomNavP
       className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(15,23,42,0.08)] lg:hidden"
       aria-label="Navegação principal"
     >
-      <div className="mx-auto flex max-w-lg items-stretch justify-around">
+      <div className="mx-auto flex max-w-lg items-end justify-around px-1">
         {bottomItems.map((item) => {
-          const Icon = iconMap[item.icon as keyof typeof iconMap];
+          const isNova = item.href === "/ordens/nova";
+          const Icon = isNova
+            ? Plus
+            : iconMap[item.icon as keyof typeof iconMap];
           const active = isNavItemActive(item.href, pathname);
+
+          if (isNova) {
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "relative -mt-4 flex min-w-0 flex-1 flex-col items-center gap-1 touch-manipulation",
+                  active ? "text-sky-700" : "text-slate-600"
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-transform active:scale-95",
+                    active
+                      ? "bg-sky-600 text-white ring-4 ring-sky-100"
+                      : "bg-sky-500 text-white"
+                  )}
+                >
+                  <Icon className="h-7 w-7 stroke-[2.5]" />
+                </span>
+                <span className="truncate text-[11px] font-semibold">
+                  {BOTTOM_LABELS[item.href] ?? item.label}
+                </span>
+              </Link>
+            );
+          }
 
           return (
             <Link

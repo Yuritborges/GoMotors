@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   LogOut,
   Package,
+  Plus,
   Receipt,
   UserCog,
   Users,
@@ -29,6 +30,7 @@ const iconMap = {
   LayoutDashboard,
   Kanban,
   ClipboardList,
+  Plus,
   Users,
   Wrench,
   Package,
@@ -145,8 +147,8 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="flex-1 overflow-x-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
-          <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+        <main className="flex-1 overflow-x-hidden pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-0">
+          <div className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
             {children}
           </div>
         </main>
