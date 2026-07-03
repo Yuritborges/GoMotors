@@ -5,6 +5,8 @@ import {
   requireAuth,
   requireOwner,
 } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
+import { recordStockMovement } from "@/lib/stock-movements";
 
 export async function GET() {
   try {
@@ -22,7 +24,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await requireOwner();
+    const user = await requireOwner();
     const body = await request.json();
 
     if (!body.name || body.price === undefined) {
@@ -32,16 +34,38 @@ export async function POST(request: Request) {
       );
     }
 
+    const stockVal =
+      body.stock !== undefined && body.stock !== "" ? Number(body.stock) : null;
+
     const product = await prisma.product.create({
       data: {
         name: body.name,
         category: body.category || "Geral",
         price: Number(body.price),
-        stock: body.stock !== undefined && body.stock !== "" ? Number(body.stock) : null,
+        stock: stockVal !== null ? 0 : null,
         minStock: Number(body.minStock ?? 5),
         description: body.description || null,
         active: body.active ?? true,
       },
+    });
+
+    if (stockVal !== null && stockVal > 0) {
+      await recordStockMovement({
+        productId: product.id,
+        type: "INVENTARIO",
+        quantityAfter: stockVal,
+        user,
+        notes: "Estoque inicial no cadastro",
+      });
+      product.stock = stockVal;
+    }
+
+    await logAudit({
+      user,
+      action: "PRODUCT_CREATE",
+      entityType: "product",
+      entityId: product.id,
+      summary: `${user.name} cadastrou produto ${product.name}`,
     });
 
     return NextResponse.json(product, { status: 201 });

@@ -32,7 +32,16 @@ export default async function ComprovantePage({ params }: Params) {
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
-      <ReceiptPrintActions orderId={order.id} />
+      <ReceiptPrintActions
+        orderId={order.id}
+        clientPhone={order.client.phone}
+        clientName={order.client.name}
+        plate={order.vehicle.plate}
+        total={order.total}
+        entryAt={order.entryAt.toISOString()}
+        paymentMethod={order.paymentMethod}
+        services={order.items.map((i) => i.serviceName)}
+      />
 
       <article id="comprovante" className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm print:border-0 print:shadow-none">
         <header className="border-b border-slate-200 pb-4 text-center">

@@ -75,6 +75,14 @@ enum PartnerEntryType {
   AJUSTE
 }
 
+enum StockMovementType {
+  COMPRA
+  AJUSTE
+  SAIDA
+  ENTRADA
+  INVENTARIO
+}
+
 model PartnerStore {
   id        String   @id @default(cuid())
   name      String   @unique
@@ -113,6 +121,26 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  auditLogs       AuditLog[]
+  stockMovements  StockMovement[]
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  userName   String
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  metadata   String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
 }
 
 model Product {
@@ -126,6 +154,8 @@ model Product {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  movements StockMovement[]
 }
 
 model Client {
@@ -268,4 +298,24 @@ model Expense {
   date        DateTime
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+}
+
+model StockMovement {
+  id             String            @id @default(cuid())
+  productId      String
+  type           StockMovementType
+  quantityBefore Int
+  quantityAfter  Int
+  delta          Int
+  unitCost       Float?
+  notes          String?
+  userId         String?
+  userName       String
+  createdAt      DateTime          @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@index([createdAt])
 }

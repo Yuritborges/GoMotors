@@ -41,6 +41,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/financeiro", label: "Financeiro", icon: "BarChart3", roles: ["PROPRIETARIO"] },
   { href: "/despesas", label: "Despesas", icon: "Receipt", roles: ["PROPRIETARIO"] },
   { href: "/relatorios", label: "Relat\u00f3rios", icon: "FileSpreadsheet", roles: ["PROPRIETARIO"] },
+  { href: "/auditoria", label: "Auditoria", icon: "History", roles: ["PROPRIETARIO"] },
   { href: "/usuarios", label: "Usu\u00e1rios", icon: "UserCog", roles: ["PROPRIETARIO"] },
 ];
 

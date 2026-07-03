@@ -14,6 +14,8 @@ import {
   OrderEntryDateError,
   parseOrderEntryAt,
 } from "@/lib/order-entry-date";
+import { handleAuthError, requireAuth } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -50,6 +52,13 @@ function isWorkflowPayload(body: Record<string, unknown>) {
 }
 
 export async function POST(request: Request) {
+  let user;
+  try {
+    user = await requireAuth();
+  } catch (error) {
+    return handleAuthError(error);
+  }
+
   const body = await request.json();
 
   let entryAt: Date;
@@ -216,6 +225,24 @@ export async function POST(request: Request) {
       employee: true,
       items: { include: { employee: true } },
       payments: true,
+    },
+  });
+
+  const vehiclePlate = vehicle.plate;
+  await logAudit({
+    user,
+    action: retroactive ? "ORDER_RETROACTIVE" : "ORDER_CREATE",
+    entityType: "order",
+    entityId: order.id,
+    summary: retroactive
+      ? `${user.name} lançou OS retroativa ${vehiclePlate} em ${entryAt.toLocaleString("pt-BR")}`
+      : `${user.name} criou OS ${vehiclePlate}`,
+    metadata: {
+      plate: vehiclePlate,
+      total,
+      paymentMethod,
+      retroactive,
+      entryAt: entryAt.toISOString(),
     },
   });
 

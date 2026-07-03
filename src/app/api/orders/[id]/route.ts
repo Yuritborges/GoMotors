@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleAuthError, requireOwner } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -67,15 +68,32 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(_request: Request, { params }: Params) {
   try {
-    await requireOwner();
+    const user = await requireOwner();
     const { id } = await params;
 
-    const existing = await prisma.serviceOrder.findUnique({ where: { id } });
+    const existing = await prisma.serviceOrder.findUnique({
+      where: { id },
+      include: { vehicle: true, client: true },
+    });
     if (!existing) {
       return NextResponse.json({ error: "Ordem não encontrada" }, { status: 404 });
     }
 
     await prisma.serviceOrder.delete({ where: { id } });
+
+    await logAudit({
+      user,
+      action: "ORDER_DELETE",
+      entityType: "order",
+      entityId: id,
+      summary: `${user.name} excluiu OS ${existing.vehicle.plate} (${existing.client.name})`,
+      metadata: {
+        plate: existing.vehicle.plate,
+        total: existing.total,
+        entryAt: existing.entryAt.toISOString(),
+      },
+    });
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleAuthError(error);

@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { usePolling } from "@/lib/use-polling";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/layout/page-header";
 
 type Order = {
@@ -21,15 +22,21 @@ type Order = {
   items: { serviceName: string }[];
 };
 
+function todayInputValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function OrdensPage() {
+  const [date, setDate] = useState(todayInputValue);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isOwner, setIsOwner] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
-    const res = await fetch("/api/orders");
+    const res = await fetch(`/api/orders?date=${encodeURIComponent(date)}`);
     setOrders(await res.json());
-  }, []);
+  }, [date]);
 
   usePolling(loadOrders, 10000);
 
@@ -56,12 +63,27 @@ export default function OrdensPage() {
     await loadOrders();
   }
 
+  const isToday = date === todayInputValue();
+  const dateLabel = isToday ? "hoje" : formatDate(new Date(date + "T12:00:00"));
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Ordens de serviço" description="Ordens registradas hoje">
-        <Link href="/ordens/nova" className="w-full sm:w-auto">
-          <Button className="w-full sm:w-auto">Nova ordem</Button>
-        </Link>
+      <PageHeader
+        title="Ordens de serviço"
+        description={`Ordens de ${dateLabel}`}
+      >
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <Input
+            type="date"
+            value={date}
+            max={todayInputValue()}
+            onChange={(e) => setDate(e.target.value)}
+            className="h-10 w-full sm:w-auto"
+          />
+          <Link href="/ordens/nova" className="w-full sm:w-auto">
+            <Button className="w-full sm:w-auto">Nova ordem</Button>
+          </Link>
+        </div>
       </PageHeader>
 
       <div className="space-y-3 md:hidden">
@@ -105,7 +127,7 @@ export default function OrdensPage() {
         ))}
         {orders.length === 0 && (
           <p className="py-8 text-center text-sm text-slate-500">
-            Nenhuma ordem registrada hoje.
+            Nenhuma ordem em {dateLabel}.
           </p>
         )}
       </div>
@@ -161,7 +183,7 @@ export default function OrdensPage() {
           </table>
           {orders.length === 0 && (
             <p className="py-8 text-center text-sm text-slate-500">
-              Nenhuma ordem registrada hoje.
+              Nenhuma ordem em {dateLabel}.
             </p>
           )}
         </CardContent>

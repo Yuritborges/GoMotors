@@ -164,6 +164,15 @@ export default function RelatoriosPage() {
         <Button variant="outline" className="w-full sm:w-auto" onClick={exportCsv}>
           Exportar CSV
         </Button>
+        <Button
+          variant="outline"
+          className="w-full sm:w-auto"
+          onClick={() => {
+            window.location.href = `/api/export/month?month=${month}`;
+          }}
+        >
+          Exportar dados do mês (Excel)
+        </Button>
       </PageHeader>
 
       <Field className="max-w-xs">
