@@ -1,19 +1,17 @@
 import { PRIMARY_WORKFLOW_TASKS } from "./order-workflow";
 
-export type DisplayLaneKey =
+export type FixedDisplayLaneKey =
   | "AGUARDANDO"
   | "LAVAGEM"
   | "ASPIRACAO"
   | "SECAGEM"
-  | "EXTRAS"
   | "PRONTO";
 
-export const DISPLAY_LANES: { key: DisplayLaneKey; label: string }[] = [
+export const FIXED_DISPLAY_LANES: { key: FixedDisplayLaneKey; label: string }[] = [
   { key: "AGUARDANDO", label: "Aguardando" },
   { key: "LAVAGEM", label: "Lavagem" },
   { key: "ASPIRACAO", label: "Aspiração" },
   { key: "SECAGEM", label: "Secagem" },
-  { key: "EXTRAS", label: "Polimento / Extras" },
   { key: "PRONTO", label: "Pronto" },
 ];
 
@@ -23,8 +21,14 @@ export type DisplayLaneEntry = {
   clientName: string;
   serviceName: string;
   employeeName: string | null;
-  /** Só na fila de aguardando */
   queuePosition?: number;
+};
+
+export type DisplayColumn = {
+  lane: string;
+  label: string;
+  fixed: boolean;
+  entries: DisplayLaneEntry[];
 };
 
 export type DisplayOrderInput = {
@@ -42,26 +46,6 @@ function normalizeService(name: string): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-/** Classifica item da OS na coluna do telão. */
-export function serviceToDisplayLane(serviceName: string): DisplayLaneKey {
-  const n = normalizeService(serviceName);
-
-  if (n === "aspiracao" || n.startsWith("aspir")) return "ASPIRACAO";
-  if (n === "secagem" || n.startsWith("secag")) return "SECAGEM";
-
-  if (
-    n === "lavagem" ||
-    n.includes("lavagem") ||
-    n.includes("ducha") ||
-    n.includes("motor") ||
-    n.includes("chassi")
-  ) {
-    return "LAVAGEM";
-  }
-
-  return "EXTRAS";
-}
-
 const WORKFLOW_LABELS = new Set(
   PRIMARY_WORKFLOW_TASKS.map((t) => normalizeService(t.label))
 );
@@ -70,30 +54,64 @@ function isWorkflowItem(serviceName: string): boolean {
   return WORKFLOW_LABELS.has(normalizeService(serviceName));
 }
 
-function isExtraItem(serviceName: string): boolean {
-  return !isWorkflowItem(serviceName);
+/** Lavagem simples/completa etc. entram na coluna Lavagem, não como extra dinâmico. */
+function isLavagemColumnItem(serviceName: string): boolean {
+  if (isWorkflowItem(serviceName)) {
+    return normalizeService(serviceName) === "lavagem";
+  }
+  const n = normalizeService(serviceName);
+  return (
+    n.includes("lavagem") ||
+    n.includes("ducha") ||
+    n.includes("motor") ||
+    n.includes("chassi")
+  );
 }
 
-export function buildDisplayLanes(orders: DisplayOrderInput[]): Record<
-  DisplayLaneKey,
-  DisplayLaneEntry[]
-> {
-  const lanes: Record<DisplayLaneKey, DisplayLaneEntry[]> = {
+function isAspiracaoItem(serviceName: string): boolean {
+  const n = normalizeService(serviceName);
+  return n === "aspiracao" || n.startsWith("aspir");
+}
+
+function isSecagemItem(serviceName: string): boolean {
+  const n = normalizeService(serviceName);
+  return n === "secagem" || n.startsWith("secag");
+}
+
+/** Serviço extra (Polimento, Higienização…) — coluna dinâmica só se houver carro. */
+function isDynamicExtraItem(serviceName: string): boolean {
+  if (isAspiracaoItem(serviceName) || isSecagemItem(serviceName)) return false;
+  if (isLavagemColumnItem(serviceName)) return false;
+  return true;
+}
+
+function dynamicLaneKey(serviceName: string): string {
+  return `extra:${normalizeService(serviceName)}`;
+}
+
+function displayLabel(serviceName: string): string {
+  const trimmed = serviceName.trim();
+  if (!trimmed) return "Serviço";
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+export function buildDisplayColumns(orders: DisplayOrderInput[]): DisplayColumn[] {
+  const fixed: Record<FixedDisplayLaneKey, DisplayLaneEntry[]> = {
     AGUARDANDO: [],
     LAVAGEM: [],
     ASPIRACAO: [],
     SECAGEM: [],
-    EXTRAS: [],
     PRONTO: [],
   };
+  const dynamic = new Map<string, { label: string; entries: DisplayLaneEntry[] }>();
 
   const waiting = orders.filter((o) => o.status === "AGUARDANDO");
   waiting.forEach((order, index) => {
-    lanes.AGUARDANDO.push({
+    fixed.AGUARDANDO.push({
       orderId: order.id,
       plate: order.vehicle.plate,
       clientName: order.client.name.split(" ")[0],
-      serviceName: order.items.map((i) => i.serviceName).join(" · ") || "—",
+      serviceName: "—",
       employeeName: null,
       queuePosition: index + 1,
     });
@@ -110,59 +128,95 @@ export function buildDisplayLanes(orders: DisplayOrderInput[]): Record<
 
     if (order.status === "EM_LAVAGEM") {
       for (const item of order.items) {
-        if (isExtraItem(item.serviceName) && serviceToDisplayLane(item.serviceName) === "EXTRAS") {
-          continue;
-        }
-        const lane = serviceToDisplayLane(item.serviceName);
-        if (lane === "EXTRAS") continue;
-        lanes[lane].push({
+        const entry: DisplayLaneEntry = {
           ...base,
           serviceName: item.serviceName,
           employeeName: item.employee?.name ?? null,
-        });
+        };
+        if (isAspiracaoItem(item.serviceName)) {
+          fixed.ASPIRACAO.push(entry);
+        } else if (isSecagemItem(item.serviceName)) {
+          fixed.SECAGEM.push(entry);
+        } else if (isLavagemColumnItem(item.serviceName)) {
+          fixed.LAVAGEM.push(entry);
+        }
       }
       continue;
     }
 
     if (order.status === "FINALIZACAO") {
       for (const item of order.items) {
-        if (isWorkflowItem(item.serviceName)) continue;
-        lanes.EXTRAS.push({
+        if (!isDynamicExtraItem(item.serviceName)) continue;
+        const key = dynamicLaneKey(item.serviceName);
+        const bucket = dynamic.get(key) ?? {
+          label: displayLabel(item.serviceName),
+          entries: [],
+        };
+        bucket.entries.push({
           ...base,
           serviceName: item.serviceName,
           employeeName: item.employee?.name ?? null,
         });
+        dynamic.set(key, bucket);
       }
-      continue;
     }
   }
 
   for (const order of orders.filter((o) => o.status === "PRONTO")) {
-    lanes.PRONTO.push({
+    fixed.PRONTO.push({
       orderId: order.id,
       plate: order.vehicle.plate,
       clientName: order.client.name.split(" ")[0],
-      serviceName: order.items.map((i) => i.serviceName).join(" · ") || "—",
-      employeeName: order.items.find((i) => i.employee)?.employee?.name ?? null,
+      serviceName: "—",
+      employeeName: null,
     });
   }
 
-  return lanes;
+  const columns: DisplayColumn[] = [];
+
+  for (const { key, label } of FIXED_DISPLAY_LANES) {
+    if (key === "PRONTO") continue;
+    columns.push({
+      lane: key,
+      label,
+      fixed: true,
+      entries: fixed[key],
+    });
+  }
+
+  const dynamicSorted = [...dynamic.entries()].sort((a, b) =>
+    a[1].label.localeCompare(b[1].label, "pt-BR")
+  );
+  for (const [lane, { label, entries }] of dynamicSorted) {
+    if (entries.length === 0) continue;
+    columns.push({ lane, label, fixed: false, entries });
+  }
+
+  columns.push({
+    lane: "PRONTO",
+    label: "Pronto",
+    fixed: true,
+    entries: fixed.PRONTO,
+  });
+
+  return columns;
 }
 
-export function displayLaneStats(lanes: Record<DisplayLaneKey, DisplayLaneEntry[]>) {
+export function displayLaneStats(columns: DisplayColumn[]) {
+  const byLane = Object.fromEntries(columns.map((c) => [c.lane, c.entries]));
+
   const activePlates = new Set<string>();
-  for (const key of ["LAVAGEM", "ASPIRACAO", "SECAGEM", "EXTRAS"] as DisplayLaneKey[]) {
-    for (const entry of lanes[key]) activePlates.add(entry.plate);
+  for (const col of columns) {
+    if (col.lane === "AGUARDANDO" || col.lane === "PRONTO") continue;
+    for (const entry of col.entries) activePlates.add(entry.plate);
   }
 
   return {
-    aguardando: lanes.AGUARDANDO.length,
+    aguardando: byLane.AGUARDANDO?.length ?? 0,
     emServico: activePlates.size,
-    lavagem: lanes.LAVAGEM.length,
-    aspiracao: lanes.ASPIRACAO.length,
-    secagem: lanes.SECAGEM.length,
-    extras: lanes.EXTRAS.length,
-    prontos: lanes.PRONTO.length,
+    lavagem: byLane.LAVAGEM?.length ?? 0,
+    aspiracao: byLane.ASPIRACAO?.length ?? 0,
+    secagem: byLane.SECAGEM?.length ?? 0,
+    prontos: byLane.PRONTO?.length ?? 0,
   };
 }

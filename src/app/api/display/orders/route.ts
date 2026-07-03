@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { endOfDay, startOfDay } from "@/lib/utils";
-import {
-  buildDisplayLanes,
-  DISPLAY_LANES,
-  displayLaneStats,
-} from "@/lib/display-lanes";
+import { buildDisplayColumns, displayLaneStats } from "@/lib/display-lanes";
 import { operationalOrdersWhere } from "@/lib/imported-orders";
 
 export async function GET() {
@@ -32,15 +28,11 @@ export async function GET() {
     orderBy: { entryAt: "asc" },
   });
 
-  const lanes = buildDisplayLanes(orders);
+  const columns = buildDisplayColumns(orders);
 
   return NextResponse.json({
     updatedAt: new Date().toISOString(),
-    columns: DISPLAY_LANES.map(({ key, label }) => ({
-      lane: key,
-      label,
-      entries: lanes[key],
-    })),
-    stats: displayLaneStats(lanes),
+    columns,
+    stats: displayLaneStats(columns),
   });
 }

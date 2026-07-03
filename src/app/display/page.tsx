@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { usePolling } from "@/lib/use-polling";
-import type { DisplayLaneKey } from "@/lib/display-lanes";
 
 type DisplayEntry = {
   orderId: string;
@@ -14,32 +13,35 @@ type DisplayEntry = {
   queuePosition?: number;
 };
 
+type DisplayColumn = {
+  lane: string;
+  label: string;
+  fixed: boolean;
+  entries: DisplayEntry[];
+};
+
 type DisplayData = {
   updatedAt: string;
-  columns: {
-    lane: DisplayLaneKey;
-    label: string;
-    entries: DisplayEntry[];
-  }[];
+  columns: DisplayColumn[];
   stats: {
     aguardando: number;
     emServico: number;
     lavagem: number;
     aspiracao: number;
     secagem: number;
-    extras: number;
     prontos: number;
   };
 };
 
-const COLUMN_COLORS: Record<DisplayLaneKey, string> = {
+const FIXED_COLUMN_COLORS: Record<string, string> = {
   AGUARDANDO: "border-amber-500 bg-amber-500/10",
   LAVAGEM: "border-sky-500 bg-sky-500/10",
   ASPIRACAO: "border-indigo-500 bg-indigo-500/10",
   SECAGEM: "border-cyan-500 bg-cyan-500/10",
-  EXTRAS: "border-purple-500 bg-purple-500/10",
   PRONTO: "border-emerald-500 bg-emerald-500/10",
 };
+
+const DYNAMIC_COLUMN_COLOR = "border-purple-500 bg-purple-500/10";
 
 const STAT_ITEMS = [
   { key: "aguardando" as const, label: "Aguardando", color: "text-amber-400" },
@@ -47,18 +49,25 @@ const STAT_ITEMS = [
   { key: "prontos" as const, label: "Prontos", color: "text-emerald-400" },
 ];
 
+function columnColor(col: DisplayColumn): string {
+  if (!col.fixed) return DYNAMIC_COLUMN_COLOR;
+  return FIXED_COLUMN_COLORS[col.lane] ?? "border-zinc-600 bg-zinc-800/30";
+}
+
 function LaneCard({
   entry,
   lane,
 }: {
   entry: DisplayEntry;
-  lane: DisplayLaneKey;
+  lane: string;
 }) {
-  const showServiceLine = lane !== "AGUARDANDO" && lane !== "PRONTO";
+  const isQueue = lane === "AGUARDANDO";
+  const isReady = lane === "PRONTO";
+  const showEmployee = !isQueue && !isReady;
 
   return (
     <div className="rounded-xl bg-zinc-900/90 px-3 py-3 shadow-lg sm:px-4 sm:py-4">
-      {lane === "AGUARDANDO" && entry.queuePosition != null && (
+      {isQueue && entry.queuePosition != null && (
         <p className="text-center text-xs font-semibold text-amber-400 sm:text-sm">
           #{entry.queuePosition} na fila
         </p>
@@ -69,20 +78,15 @@ function LaneCard({
       <p className="mt-0.5 text-center text-sm text-zinc-400 sm:text-base">
         {entry.clientName}
       </p>
-      {showServiceLine && (
-        <div className="mt-2 border-t border-zinc-800 pt-2 text-center">
-          <p className="text-xs font-medium text-zinc-300 sm:text-sm">
-            {entry.serviceName}
-          </p>
-          {entry.employeeName && (
-            <p className="mt-1 inline-block rounded-md bg-zinc-800 px-2 py-0.5 text-xs font-bold text-sky-300 sm:text-sm">
-              {entry.employeeName}
-            </p>
-          )}
-        </div>
+      {showEmployee && entry.employeeName && (
+        <p className="mt-2 text-center">
+          <span className="inline-block rounded-md bg-zinc-800 px-2 py-0.5 text-xs font-bold text-sky-300 sm:text-sm">
+            {entry.employeeName}
+          </span>
+        </p>
       )}
-      {lane === "PRONTO" && (
-        <p className="mt-2 text-center text-xs font-semibold text-emerald-400">
+      {isReady && (
+        <p className="mt-2 text-center text-xs font-semibold text-emerald-400 sm:text-sm">
           Retirada liberada
         </p>
       )}
@@ -123,6 +127,8 @@ export default function DisplayPage() {
       </div>
     );
   }
+
+  const columnCount = data.columns.length;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
@@ -169,11 +175,16 @@ export default function DisplayPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 px-4 pb-8 sm:gap-4 md:grid-cols-3 xl:grid-cols-6 lg:px-8">
+      <div
+        className="grid gap-3 px-4 pb-8 sm:gap-4 lg:px-8"
+        style={{
+          gridTemplateColumns: `repeat(${Math.min(columnCount, 6)}, minmax(0, 1fr))`,
+        }}
+      >
         {data.columns.map((col) => (
           <section
             key={col.lane}
-            className={`flex min-h-[12rem] min-w-0 flex-col rounded-2xl border-2 p-2 sm:min-h-[16rem] sm:p-3 ${COLUMN_COLORS[col.lane]}`}
+            className={`flex min-h-[12rem] min-w-0 flex-col rounded-2xl border-2 p-2 sm:min-h-[16rem] sm:p-3 ${columnColor(col)}`}
           >
             <h2 className="mb-2 shrink-0 text-center text-xs font-bold uppercase tracking-wide sm:text-sm lg:text-base">
               {col.label}
