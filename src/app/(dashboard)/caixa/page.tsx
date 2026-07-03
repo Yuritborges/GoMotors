@@ -155,13 +155,15 @@ export default function CaixaPage() {
           value={formatCurrency(data.totalSold)}
           accent="text-emerald-600 bg-emerald-50"
         />
-        <MetricCard
-          icon={Clock}
-          label="Pagar depois"
-          value={formatCurrency(data.payLaterAmount)}
-          sub={`${data.pendingPaymentCount} pendente(s)`}
-          accent="text-amber-600 bg-amber-50"
-        />
+        <Link href="/caixa/pendencias" className="block">
+          <MetricCard
+            icon={Clock}
+            label="Pagar depois"
+            value={formatCurrency(data.payLaterAmount)}
+            sub={`${data.pendingPaymentCount} pendente(s) · ver devedores`}
+            accent="text-amber-600 bg-amber-50"
+          />
+        </Link>
         <MetricCard
           icon={PiggyBank}
           label="Lucro estimado"
@@ -284,6 +286,12 @@ export default function CaixaPage() {
           <CardContent className="space-y-3 text-sm">
             <SummaryRow label="Total recebido" value={formatCurrency(data.totalSold)} />
             <SummaryRow label="A receber (pagar depois)" value={formatCurrency(data.pendingAmount)} />
+            <Link
+              href="/caixa/pendencias"
+              className="block rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-sm font-medium text-amber-900 hover:bg-amber-100"
+            >
+              Abrir lista de devedores e quitações →
+            </Link>
             <SummaryRow label="Descontos" value={formatCurrency(data.totalDiscounts)} />
             <SummaryRow label="Despesas do dia" value={formatCurrency(data.totalExpenses)} />
             <SummaryRow
@@ -298,13 +306,29 @@ export default function CaixaPage() {
         </Card>
       </div>
 
+      {data.pendingOrders.length === 0 && data.pendingPaymentCount === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 py-8 sm:flex-row sm:justify-between">
+            <p className="text-sm text-slate-500">Nenhuma OS pendente registrada hoje.</p>
+            <Link href="/caixa/pendencias">
+              <Button variant="outline">Ver pendências de todos os clientes</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
       {data.pendingOrders.length > 0 && (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Pagamentos pendentes</CardTitle>
-            <Link href="/painel">
-              <Button size="sm" className="bg-amber-600 hover:bg-amber-700">
-                Receber no painel
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Pagamentos pendentes (hoje)</CardTitle>
+              <p className="mt-1 text-sm text-slate-500">
+                {data.pendingPaymentCount} OS · {formatCurrency(data.pendingAmount)}
+              </p>
+            </div>
+            <Link href="/caixa/pendencias">
+              <Button size="sm" className="w-full bg-amber-600 hover:bg-amber-700 sm:w-auto">
+                Ver todos os devedores
               </Button>
             </Link>
           </CardHeader>

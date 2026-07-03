@@ -69,6 +69,9 @@ export function isNavItemActive(href: string, pathname: string): boolean {
       (pathname.startsWith("/ordens/") && !pathname.startsWith("/ordens/nova"))
     );
   }
+  if (href === "/caixa") {
+    return pathname === "/caixa" || pathname.startsWith("/caixa/");
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -80,6 +83,7 @@ export function getPageTitleFromPath(pathname: string, role: UserRole): string {
   if (pathname.startsWith("/clientes/") && pathname !== "/clientes") {
     return "Hist\u00f3rico do cliente";
   }
+  if (pathname === "/caixa/pendencias") return "Pagamentos pendentes";
 
   const items = getNavItemsForRole(role);
   const match = items.find((item) => isNavItemActive(item.href, pathname));

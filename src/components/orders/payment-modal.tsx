@@ -29,13 +29,16 @@ type PaymentModalProps = {
   };
   onClose: () => void;
   onPaid: (orderId: string) => void;
+  /** Abre direto no fechamento mensal (lista de devedores). */
+  defaultMode?: PayMode;
 };
 
 type PayMode = "single" | "fechamento";
 
-export function PaymentModal({ order, onClose, onPaid }: PaymentModalProps) {
+export function PaymentModal({ order, onClose, onPaid, defaultMode }: PaymentModalProps) {
   const [mode, setMode] = useState<PayMode>(
-    order.paymentMethod === "FECHAMENTO_MENSAL" ? "fechamento" : "single"
+    defaultMode ??
+      (order.paymentMethod === "FECHAMENTO_MENSAL" ? "fechamento" : "single")
   );
   const [method, setMethod] = useState("PIX");
   const [saving, setSaving] = useState(false);
