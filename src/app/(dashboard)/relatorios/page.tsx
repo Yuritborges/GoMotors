@@ -52,6 +52,7 @@ type FinanceData = {
     balance: number;
   }[];
   pendingRevenue: number;
+  pendingByPayment: { method: string; amount: number }[];
 };
 
 function currentMonthValue() {
@@ -110,7 +111,19 @@ export default function RelatoriosPage() {
       ["Margem %", data.marginPercent],
       ["Veículos atendidos", data.monthlyVehicles],
       ["Ticket médio", data.averageTicket],
+      ["A receber (pagar depois)", data.pendingRevenue],
       [],
+      ...(data.pendingByPayment?.length
+        ? [
+            ["Pagamentos pendentes por forma"],
+            ["Forma", "Valor"],
+            ...data.pendingByPayment.map((p) => [
+              PAYMENT_METHOD_LABELS[p.method] ?? p.method,
+              p.amount,
+            ]),
+            [],
+          ]
+        : []),
       ["Auditoria — Funcionários"],
       ["Nome", "Vales", "Reembolsos", "Descontos", "Impacto período", "Saldo acumulado"],
       ...data.employeeByPerson.map((e) => [
@@ -158,7 +171,7 @@ export default function RelatoriosPage() {
         <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
       </Field>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <FinanceKpiCard
           title="Faturamento"
           value={formatCurrency(data.revenue)}
@@ -180,6 +193,11 @@ export default function RelatoriosPage() {
           title="Veículos"
           value={String(data.monthlyVehicles)}
           subtitle={`Ticket ${formatCurrency(data.averageTicket)}`}
+        />
+        <FinanceKpiCard
+          title="Pagar depois"
+          value={formatCurrency(data.pendingRevenue)}
+          subtitle="Não entra no lucro"
         />
       </div>
 
@@ -205,7 +223,7 @@ export default function RelatoriosPage() {
         />
 
         <HorizontalBarChart
-          title="Formas de pagamento"
+          title="Formas de pagamento (recebido)"
           items={data.paymentMethods.map((p) => ({
             label: PAYMENT_METHOD_LABELS[p.method] ?? p.method,
             value: p.amount,
@@ -213,6 +231,18 @@ export default function RelatoriosPage() {
           formatValue={formatCurrency}
           colorClass="bg-emerald-500"
         />
+
+        {data.pendingByPayment && data.pendingByPayment.length > 0 && (
+          <HorizontalBarChart
+            title="Pagar depois (não entra no lucro)"
+            items={data.pendingByPayment.map((p) => ({
+              label: PAYMENT_METHOD_LABELS[p.method] ?? p.method,
+              value: p.amount,
+            }))}
+            formatValue={formatCurrency}
+            colorClass="bg-amber-400"
+          />
+        )}
 
         <HorizontalBarChart
           title="Despesas por categoria"

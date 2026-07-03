@@ -33,6 +33,7 @@ type FinanceData = {
   dailyFlow: { date: string; revenue: number; expenses: number; profit: number }[];
   expensesByCategory: { category: string; amount: number }[];
   revenueByPayment: { method: string; amount: number }[];
+  pendingByPayment: { method: string; amount: number }[];
   topServices: { name: string; count: number; revenue: number }[];
   employeeLedger: {
     vales: number;
@@ -183,9 +184,9 @@ export default function FinanceiroPage() {
           variant="profit"
         />
         <FinanceKpiCard
-          title="A receber"
+          title="Pagar depois"
           value={formatCurrency(data.pendingRevenue)}
-          subtitle="Ordens pendentes de pagamento"
+          subtitle="A receber — não entra no lucro"
         />
       </div>
 
@@ -220,6 +221,18 @@ export default function FinanceiroPage() {
           formatValue={formatCurrency}
           colorClass="bg-emerald-500"
         />
+
+        {data.pendingByPayment.length > 0 && (
+          <HorizontalBarChart
+            title="Pagar depois (não entra no lucro)"
+            items={data.pendingByPayment.map((p) => ({
+              label: PAYMENT_METHOD_LABELS[p.method] ?? p.method,
+              value: p.amount,
+            }))}
+            formatValue={formatCurrency}
+            colorClass="bg-amber-400"
+          />
+        )}
 
         <HorizontalBarChart
           title="Serviços que mais faturaram"

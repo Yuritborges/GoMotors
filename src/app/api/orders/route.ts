@@ -9,6 +9,7 @@ import {
 import { endOfDay, startOfDay } from "@/lib/utils";
 import type { WorkflowTaskKey } from "@/lib/order-workflow";
 import { hasSelectedWashService } from "@/lib/order-workflow";
+import { paymentStatusForMethod } from "@/lib/payments";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -131,8 +132,8 @@ export async function POST(request: Request) {
   const subtotal = orderItemsSubtotal(items);
   const discount = Number(body.discount ?? 0);
   const total = Math.max(subtotal - discount, 0);
-  const paymentMethod = body.paymentMethod ?? "PENDENTE";
-  const paymentStatus = paymentMethod === "PENDENTE" ? "PENDENTE" : "PAGO";
+  const paymentMethod = body.paymentMethod ?? "PAGAR_DEPOIS";
+  const paymentStatus = paymentStatusForMethod(paymentMethod);
 
   const order = await prisma.serviceOrder.create({
     data: {

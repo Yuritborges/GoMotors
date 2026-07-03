@@ -32,6 +32,7 @@ export type FinanceSummary = {
   dailyFlow: DailyFlowPoint[];
   expensesByCategory: { category: string; amount: number }[];
   revenueByPayment: { method: string; amount: number }[];
+  pendingByPayment: { method: string; amount: number }[];
   topServices: { name: string; count: number; revenue: number }[];
   topClients: { name: string; visits: number }[];
   suggestedMonth: string | null;
@@ -142,7 +143,8 @@ async function getLatestMonthWithData(): Promise<string | null> {
 async function aggregatePeriod(from: Date, to: Date) {
   const [
     paidOrders,
-    pendingOrders,
+    pendingOrdersAgg,
+    pendingOrdersList,
     expenses,
     employeeTransactions,
     employeesWithTx,
@@ -164,6 +166,14 @@ async function aggregatePeriod(from: Date, to: Date) {
         status: { not: "CANCELADO" },
         paymentStatus: "PENDENTE",
       },
+    }),
+    prisma.serviceOrder.findMany({
+      where: {
+        entryAt: { gte: from, lte: to },
+        status: { not: "CANCELADO" },
+        paymentStatus: "PENDENTE",
+      },
+      select: { total: true, paymentMethod: true },
     }),
     prisma.expense.findMany({
       where: { date: { gte: from, lte: to } },
@@ -204,7 +214,7 @@ async function aggregatePeriod(from: Date, to: Date) {
   ]);
 
   const revenue = paidOrders.reduce((s, o) => s + o.total, 0);
-  const pendingRevenue = pendingOrders._sum.total ?? 0;
+  const pendingRevenue = pendingOrdersAgg._sum.total ?? 0;
   const operatingExpenses = expenses.reduce((s, e) => s + e.amount, 0);
   const employeeSummary = summarizeByType(employeeTransactions);
   const employeeNet = employeeSummary.netExpense;
@@ -212,12 +222,20 @@ async function aggregatePeriod(from: Date, to: Date) {
 
   const revenueByDay = new Map<string, number>();
   const paymentTotals = new Map<string, number>();
+  const pendingPaymentTotals = new Map<string, number>();
   for (const o of paidOrders) {
     const key = dateKey(o.entryAt);
     revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + o.total);
     paymentTotals.set(
       o.paymentMethod,
       (paymentTotals.get(o.paymentMethod) ?? 0) + o.total
+    );
+  }
+
+  for (const o of pendingOrdersList) {
+    pendingPaymentTotals.set(
+      o.paymentMethod,
+      (pendingPaymentTotals.get(o.paymentMethod) ?? 0) + o.total
     );
   }
 
@@ -294,6 +312,9 @@ async function aggregatePeriod(from: Date, to: Date) {
     revenueByPayment: [...paymentTotals.entries()]
       .map(([method, amount]) => ({ method, amount }))
       .sort((a, b) => b.amount - a.amount),
+    pendingByPayment: [...pendingPaymentTotals.entries()]
+      .map(([method, amount]) => ({ method, amount }))
+      .sort((a, b) => b.amount - a.amount),
     topServices: topServices.map((s) => ({
       name: s.serviceName,
       count: s._count.serviceName,
@@ -345,6 +366,7 @@ export async function getFinanceSummary(
     dailyFlow: current.dailyFlow,
     expensesByCategory: current.expensesByCategory,
     revenueByPayment: current.revenueByPayment,
+    pendingByPayment: current.pendingByPayment,
     topServices: current.topServices,
     topClients: current.topClients,
     suggestedMonth,

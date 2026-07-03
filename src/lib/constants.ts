@@ -37,12 +37,13 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   PIX: "Pix",
   DEBITO: "Débito",
   CREDITO: "Crédito",
-  PENDENTE: "Pendente",
+  PENDENTE: "Pagar depois",
+  PAGAR_DEPOIS: "Pagar depois",
 };
 
 export const PAYMENT_STATUS_LABELS: Record<string, string> = {
   PAGO: "Pago",
-  PENDENTE: "Pendente",
+  PENDENTE: "Aguardando pagamento",
   ESTORNADO: "Estornado",
 };
 

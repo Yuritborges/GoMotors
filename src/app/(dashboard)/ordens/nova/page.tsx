@@ -7,6 +7,7 @@ import {
   PAYMENT_METHOD_LABELS,
   VEHICLE_TYPE_LABELS,
 } from "@/lib/constants";
+import { ORDER_PAYMENT_METHODS } from "@/lib/payments";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Label, Select, Textarea } from "@/components/ui/input";
@@ -73,7 +74,7 @@ export default function NovaOrdemPage() {
   const [extras, setExtras] = useState<Record<string, ExtraServiceState>>({});
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [discount, setDiscount] = useState("0");
-  const [paymentMethod, setPaymentMethod] = useState("PENDENTE");
+  const [paymentMethod, setPaymentMethod] = useState("PAGAR_DEPOIS");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [plateQuery, setPlateQuery] = useState("");
@@ -585,7 +586,7 @@ export default function NovaOrdemPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-2 sm:hidden">
-              {Object.entries(PAYMENT_METHOD_LABELS).map(([key, label]) => (
+              {ORDER_PAYMENT_METHODS.map((key) => (
                 <button
                   key={key}
                   type="button"
@@ -593,11 +594,13 @@ export default function NovaOrdemPage() {
                   className={cn(
                     "min-h-[44px] rounded-xl border px-2 py-2.5 text-xs font-medium touch-manipulation",
                     paymentMethod === key
-                      ? "border-sky-500 bg-sky-600 text-white"
+                      ? key === "PAGAR_DEPOIS"
+                        ? "border-amber-500 bg-amber-600 text-white"
+                        : "border-sky-500 bg-sky-600 text-white"
                       : "border-slate-200 bg-white text-slate-700"
                   )}
                 >
-                  {label}
+                  {PAYMENT_METHOD_LABELS[key]}
                 </button>
               ))}
             </div>
@@ -641,9 +644,9 @@ export default function NovaOrdemPage() {
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
                 >
-                  {Object.entries(PAYMENT_METHOD_LABELS).map(([key, label]) => (
+                  {ORDER_PAYMENT_METHODS.map((key) => (
                     <option key={key} value={key}>
-                      {label}
+                      {PAYMENT_METHOD_LABELS[key]}
                     </option>
                   ))}
                 </Select>
@@ -655,6 +658,12 @@ export default function NovaOrdemPage() {
             </div>
 
             <div className="rounded-xl bg-slate-50 p-4">
+              {paymentMethod === "PAGAR_DEPOIS" && (
+                <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  O valor entra nos relatórios como &quot;pagar depois&quot; e só contará como
+                  lucro após a baixa no painel.
+                </p>
+              )}
               <div className="flex justify-between text-sm">
                 <span>Subtotal</span>
                 <span>{formatCurrency(subtotal)}</span>

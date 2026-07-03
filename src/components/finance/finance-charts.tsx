@@ -175,7 +175,7 @@ export function DreCard({
 }) {
   const rows = [
     { label: "(+) Receita recebida", value: revenue, positive: true },
-    { label: "(+) A receber (pendente)", value: pendingRevenue, positive: true, muted: true },
+    { label: "(+) A receber — pagar depois", value: pendingRevenue, positive: true, muted: true },
     ...(operatingExpenses != null
       ? [{ label: "(−) Despesas operacionais", value: operatingExpenses, positive: false }]
       : []),
@@ -223,6 +223,11 @@ export function DreCard({
         <CardTitle className="text-base">Demonstrativo do período (DRE)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
+        {pendingRevenue > 0 && (
+          <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Valores &quot;pagar depois&quot; não entram no lucro até a baixa do pagamento.
+          </p>
+        )}
         {rows.map((row) => (
           <div
             key={row.label}

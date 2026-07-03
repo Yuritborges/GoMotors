@@ -30,6 +30,7 @@ enum PaymentMethod {
   DEBITO
   CREDITO
   PENDENTE
+  PAGAR_DEPOIS
 }
 
 enum PaymentStatus {

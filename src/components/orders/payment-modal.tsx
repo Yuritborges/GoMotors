@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { PAYMENT_METHOD_LABELS } from "@/lib/constants";
+import { isDeferredPaymentMethod } from "@/lib/payments";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -55,7 +56,7 @@ export function PaymentModal({ order, onClose, onPaid }: PaymentModalProps) {
 
           <div className="grid grid-cols-2 gap-2">
             {Object.entries(PAYMENT_METHOD_LABELS)
-              .filter(([key]) => key !== "PENDENTE")
+              .filter(([key]) => !isDeferredPaymentMethod(key))
               .map(([key, label]) => (
                 <button
                   key={key}
