@@ -245,6 +245,7 @@ model ServiceOrder {
   employeeId     String?
   partnerStoreId String?
   status         OrderStatus   @default(AGUARDANDO)
+  currentLane    String        @default("AGUARDANDO")
   subtotal      Float         @default(0)
   discount      Float         @default(0)
   total         Float         @default(0)

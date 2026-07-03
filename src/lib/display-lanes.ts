@@ -8,11 +8,11 @@ import type {
 import {
   displayServiceLabel,
   dynamicLaneKey,
-  isAspiracaoItem,
-  isDynamicExtraItem,
-  isLavagemColumnItem,
-  isSecagemItem,
 } from "./order-service-lanes";
+import {
+  getItemsForLane,
+  resolveOrderLane,
+} from "./order-lanes";
 
 export type {
   DisplayColumn,
@@ -22,7 +22,40 @@ export type {
 } from "./display-lanes-types";
 export { FIXED_DISPLAY_LANES } from "./display-lanes-constants";
 
-export function buildDisplayColumns(orders: DisplayOrderInput[]): DisplayColumn[] {
+type BuildColumnsOptions = {
+  /** Telão não exibe coluna Finalização; painel sim. */
+  includeFinalizacao?: boolean;
+};
+
+function entryForLane(
+  order: DisplayOrderInput,
+  lane: string
+): DisplayLaneEntry {
+  const base = {
+    orderId: order.id,
+    plate: order.vehicle.plate,
+    clientName: order.client.name.split(" ")[0],
+  };
+
+  const laneItems = order.items.filter((item) =>
+    getItemsForLane([item], lane).length > 0
+  );
+  const primary = laneItems[0];
+
+  return {
+    ...base,
+    serviceName: primary?.serviceName ?? "—",
+    employeeName: primary?.employee?.name ?? null,
+  };
+}
+
+/** Monta colunas operacionais — uma OS aparece em uma única etapa por vez. */
+export function buildOperationalColumns(
+  orders: DisplayOrderInput[],
+  options: BuildColumnsOptions = {}
+): DisplayColumn[] {
+  const { includeFinalizacao = false } = options;
+
   const fixed: Record<FixedDisplayLaneKey, DisplayLaneEntry[]> = {
     AGUARDANDO: [],
     LAVAGEM: [],
@@ -30,85 +63,70 @@ export function buildDisplayColumns(orders: DisplayOrderInput[]): DisplayColumn[
     SECAGEM: [],
     PRONTO: [],
   };
+  const finalizacao: DisplayLaneEntry[] = [];
   const dynamic = new Map<string, { label: string; entries: DisplayLaneEntry[] }>();
 
-  const waiting = orders.filter((o) => o.status === "AGUARDANDO");
-  waiting.forEach((order, index) => {
-    fixed.AGUARDANDO.push({
-      orderId: order.id,
-      plate: order.vehicle.plate,
-      clientName: order.client.name.split(" ")[0],
-      serviceName: "—",
-      employeeName: null,
-      queuePosition: index + 1,
-    });
-  });
+  let queuePosition = 0;
 
   for (const order of orders) {
-    if (order.status === "AGUARDANDO" || order.status === "PRONTO") continue;
+    const lane = resolveOrderLane(order);
 
-    const base = {
-      orderId: order.id,
-      plate: order.vehicle.plate,
-      clientName: order.client.name.split(" ")[0],
-    };
-
-    if (order.status === "EM_LAVAGEM") {
-      for (const item of order.items) {
-        const entry: DisplayLaneEntry = {
-          ...base,
-          serviceName: item.serviceName,
-          employeeName: item.employee?.name ?? null,
-        };
-        if (isAspiracaoItem(item.serviceName)) {
-          fixed.ASPIRACAO.push(entry);
-        } else if (isSecagemItem(item.serviceName)) {
-          fixed.SECAGEM.push(entry);
-        } else if (isLavagemColumnItem(item.serviceName)) {
-          fixed.LAVAGEM.push(entry);
-        }
-      }
+    if (lane === "AGUARDANDO") {
+      queuePosition += 1;
+      fixed.AGUARDANDO.push({
+        orderId: order.id,
+        plate: order.vehicle.plate,
+        clientName: order.client.name.split(" ")[0],
+        serviceName: "—",
+        employeeName: null,
+        queuePosition,
+      });
       continue;
     }
 
-    if (order.status === "FINALIZACAO") {
-      for (const item of order.items) {
-        if (!isDynamicExtraItem(item.serviceName)) continue;
-        const key = dynamicLaneKey(item.serviceName);
-        const bucket = dynamic.get(key) ?? {
-          label: displayServiceLabel(item.serviceName),
-          entries: [],
-        };
-        bucket.entries.push({
-          ...base,
-          serviceName: item.serviceName,
-          employeeName: item.employee?.name ?? null,
-        });
-        dynamic.set(key, bucket);
-      }
+    if (lane === "PRONTO") {
+      fixed.PRONTO.push({
+        orderId: order.id,
+        plate: order.vehicle.plate,
+        clientName: order.client.name.split(" ")[0],
+        serviceName: "—",
+        employeeName: null,
+      });
+      continue;
     }
-  }
 
-  for (const order of orders.filter((o) => o.status === "PRONTO")) {
-    fixed.PRONTO.push({
-      orderId: order.id,
-      plate: order.vehicle.plate,
-      clientName: order.client.name.split(" ")[0],
-      serviceName: "—",
-      employeeName: null,
-    });
+    if (lane === "FINALIZACAO") {
+      finalizacao.push({
+        orderId: order.id,
+        plate: order.vehicle.plate,
+        clientName: order.client.name.split(" ")[0],
+        serviceName: "—",
+        employeeName: null,
+      });
+      continue;
+    }
+
+    const entry = entryForLane(order, lane);
+
+    if (lane === "LAVAGEM") fixed.LAVAGEM.push(entry);
+    else if (lane === "ASPIRACAO") fixed.ASPIRACAO.push(entry);
+    else if (lane === "SECAGEM") fixed.SECAGEM.push(entry);
+    else if (lane.startsWith("extra:")) {
+      const label =
+        entry.serviceName !== "—"
+          ? displayServiceLabel(entry.serviceName)
+          : getDynamicLabelFromLane(lane);
+      const bucket = dynamic.get(lane) ?? { label, entries: [] };
+      bucket.entries.push(entry);
+      dynamic.set(lane, bucket);
+    }
   }
 
   const columns: DisplayColumn[] = [];
 
   for (const { key, label } of FIXED_DISPLAY_LANES) {
     if (key === "PRONTO") continue;
-    columns.push({
-      lane: key,
-      label,
-      fixed: true,
-      entries: fixed[key],
-    });
+    columns.push({ lane: key, label, fixed: true, entries: fixed[key] });
   }
 
   const dynamicSorted = [...dynamic.entries()].sort((a, b) =>
@@ -119,6 +137,15 @@ export function buildDisplayColumns(orders: DisplayOrderInput[]): DisplayColumn[
     columns.push({ lane, label, fixed: false, entries });
   }
 
+  if (includeFinalizacao) {
+    columns.push({
+      lane: "FINALIZACAO",
+      label: "Finalização",
+      fixed: true,
+      entries: finalizacao,
+    });
+  }
+
   columns.push({
     lane: "PRONTO",
     label: "Pronto",
@@ -127,6 +154,16 @@ export function buildDisplayColumns(orders: DisplayOrderInput[]): DisplayColumn[
   });
 
   return columns;
+}
+
+function getDynamicLabelFromLane(lane: string): string {
+  const name = lane.startsWith("extra:") ? lane.slice(6) : lane;
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** Telão: 5 fixas + extras dinâmicos (sem Finalização). */
+export function buildDisplayColumns(orders: DisplayOrderInput[]): DisplayColumn[] {
+  return buildOperationalColumns(orders, { includeFinalizacao: false });
 }
 
 export function displayLaneStats(columns: DisplayColumn[]) {
@@ -146,4 +183,23 @@ export function displayLaneStats(columns: DisplayColumn[]) {
     secagem: byLane.SECAGEM?.length ?? 0,
     prontos: byLane.PRONTO?.length ?? 0,
   };
+}
+
+/** Colunas dinâmicas ativas entre os pedidos (para painel). */
+export function collectActiveDynamicLanes(
+  orders: DisplayOrderInput[]
+): { lane: string; label: string }[] {
+  const lanes = new Map<string, string>();
+
+  for (const order of orders) {
+    for (const item of order.items) {
+      const key = dynamicLaneKey(item.serviceName);
+      if (!key.startsWith("extra:")) continue;
+      lanes.set(key, displayServiceLabel(item.serviceName));
+    }
+  }
+
+  return [...lanes.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
+    .map(([lane, label]) => ({ lane, label }));
 }

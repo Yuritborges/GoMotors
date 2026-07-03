@@ -14,7 +14,10 @@ export async function GET() {
       status: { notIn: ["ENTREGUE", "CANCELADO"] },
       ...operationalOrdersWhere,
     },
-    include: {
+    select: {
+      id: true,
+      status: true,
+      currentLane: true,
       client: { select: { name: true } },
       vehicle: { select: { plate: true } },
       items: {

@@ -1,16 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, ExternalLink, Monitor } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { isOwner } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/auth";
-import { ORDER_STATUS_FLOW, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/constants";
-import { getNextOrderStatus } from "@/lib/order-status-advance";
+import { PAYMENT_STATUS_LABELS } from "@/lib/constants";
+import { buildOperationalColumns } from "@/lib/display-lanes";
+import type { DisplayOrderInput } from "@/lib/display-lanes-types";
+import { getNextLaneLabel, isOrderInService, resolveOrderLane } from "@/lib/order-lanes";
 import { usePolling } from "@/lib/use-polling";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StockAlertsBanner } from "@/components/stock-alerts-banner";
 import { PageHeader } from "@/components/layout/page-header";
@@ -23,6 +24,7 @@ import {
 type Order = {
   id: string;
   status: string;
+  currentLane?: string | null;
   total: number;
   paymentStatus: string;
   paymentMethod: string;
@@ -57,19 +59,16 @@ export default function PainelPage() {
 
   usePolling(loadOrders, 3000);
 
-  async function advanceStatus(order: Order) {
-    const nextStatus = getNextOrderStatus(order.status, order.items);
-    if (!nextStatus || nextStatus === "ENTREGUE") return;
-
+  async function advanceOrder(order: Order) {
     const res = await fetch(`/api/orders/${order.id}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: nextStatus }),
+      body: JSON.stringify({ advance: true }),
     });
 
     if (!res.ok) {
       const data = await res.json();
-      alert(data.error ?? "Erro ao avançar status.");
+      alert(data.error ?? "Erro ao avançar etapa.");
       return;
     }
 
@@ -135,12 +134,28 @@ export default function PainelPage() {
     window.location.assign(`/ordens/${orderId}/comprovante?paid=1`);
   }
 
+  const boardOrders: DisplayOrderInput[] = useMemo(
+    () =>
+      orders.map((o) => ({
+        id: o.id,
+        status: o.status,
+        currentLane: o.currentLane,
+        client: o.client,
+        vehicle: o.vehicle,
+        items: o.items,
+      })),
+    [orders]
+  );
+
+  const columns = useMemo(
+    () => buildOperationalColumns(boardOrders, { includeFinalizacao: true }),
+    [boardOrders]
+  );
+
   const stats = {
-    aguardando: orders.filter((o) => o.status === "AGUARDANDO").length,
-    emAtendimento: orders.filter((o) =>
-      ["EM_LAVAGEM", "FINALIZACAO"].includes(o.status)
-    ).length,
-    prontos: orders.filter((o) => o.status === "PRONTO").length,
+    aguardando: orders.filter((o) => resolveOrderLane(o) === "AGUARDANDO").length,
+    emAtendimento: orders.filter((o) => isOrderInService(o)).length,
+    prontos: orders.filter((o) => resolveOrderLane(o) === "PRONTO").length,
     faturado: orders
       .filter((o) => o.paymentStatus === "PAGO")
       .reduce((sum, o) => sum + o.total, 0),
@@ -149,8 +164,7 @@ export default function PainelPage() {
       .reduce((sum, o) => sum + o.total, 0),
   };
 
-  const columns = ORDER_STATUS_FLOW.slice(0, 4);
-  const readyOrders = orders.filter((o) => o.status === "PRONTO");
+  const readyOrders = orders.filter((o) => resolveOrderLane(o) === "PRONTO");
 
   return (
     <div className="space-y-6">
@@ -196,65 +210,101 @@ export default function PainelPage() {
       {loading ? (
         <p className="text-sm text-slate-500">Carregando...</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {columns.map((status) => (
-            <Card key={status}>
-              <CardHeader>
-                <CardTitle>{ORDER_STATUS_LABELS[status]}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {orders
-                  .filter((o) => o.status === status)
-                  .map((order) => (
-                    <div
-                      key={order.id}
-                      className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-semibold">{order.vehicle.plate}</p>
-                          <p className="text-sm text-slate-600">{order.client.name}</p>
-                        </div>
-                        <StatusBadge status={order.status} />
-                      </div>
-                      <p className="mt-2">
-                        <OrderServicesGrid
-                          items={order.items.map(
-                            (i): OrderServiceLine => ({
-                              serviceName: i.serviceName,
-                              employeeName: i.employee?.name ?? null,
-                            })
-                          )}
-                        />
-                      </p>
-                      <div className="mt-2 flex items-center justify-between text-xs">
-                        <span
-                          className={
-                            order.paymentStatus === "PENDENTE"
-                              ? order.paymentMethod === "FECHAMENTO_MENSAL"
-                                ? "font-medium text-violet-700"
-                                : "font-medium text-amber-700"
-                              : "text-emerald-700"
-                          }
-                        >
-                          {order.paymentStatus === "PENDENTE" &&
-                          order.paymentMethod === "FECHAMENTO_MENSAL"
-                            ? "Mensalidade"
-                            : (PAYMENT_STATUS_LABELS[order.paymentStatus] ?? order.paymentStatus)}
-                        </span>
-                        <span className="text-sm font-medium">{formatCurrency(order.total)}</span>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        <Link href={`/ordens/${order.id}/comprovante`}>
-                          <Button size="sm" variant="outline" className="w-full text-xs">
-                            Comprovante
-                          </Button>
-                        </Link>
+        <div className="overflow-x-auto pb-2">
+          <div
+            className="grid min-w-max gap-4"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(260px, 1fr))`,
+            }}
+          >
+            {columns.map((col) => {
+              const colOrders = orders.filter((o) => resolveOrderLane(o) === col.lane);
+              return (
+                <Card key={col.lane} className="min-w-[260px]">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{col.label}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {colOrders.map((order) => {
+                      const nextLabel = getNextLaneLabel(resolveOrderLane(order), order.items);
+                      const isReady = col.lane === "PRONTO";
 
-                        {status === "PRONTO" ? (
-                          order.paymentStatus === "PENDENTE" ? (
-                            order.paymentMethod === "FECHAMENTO_MENSAL" ? (
-                              <>
+                      return (
+                        <div
+                          key={order.id}
+                          className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                        >
+                          <div>
+                            <p className="font-semibold">{order.vehicle.plate}</p>
+                            <p className="text-sm text-slate-600">{order.client.name}</p>
+                          </div>
+                          <div className="mt-2">
+                            <OrderServicesGrid
+                              items={order.items.map(
+                                (i): OrderServiceLine => ({
+                                  serviceName: i.serviceName,
+                                  employeeName: i.employee?.name ?? null,
+                                })
+                              )}
+                            />
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-xs">
+                            <span
+                              className={
+                                order.paymentStatus === "PENDENTE"
+                                  ? order.paymentMethod === "FECHAMENTO_MENSAL"
+                                    ? "font-medium text-violet-700"
+                                    : "font-medium text-amber-700"
+                                  : "text-emerald-700"
+                              }
+                            >
+                              {order.paymentStatus === "PENDENTE" &&
+                              order.paymentMethod === "FECHAMENTO_MENSAL"
+                                ? "Mensalidade"
+                                : (PAYMENT_STATUS_LABELS[order.paymentStatus] ??
+                                  order.paymentStatus)}
+                            </span>
+                            <span className="text-sm font-medium">
+                              {formatCurrency(order.total)}
+                            </span>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            <Link href={`/ordens/${order.id}/comprovante`}>
+                              <Button size="sm" variant="outline" className="w-full text-xs">
+                                Comprovante
+                              </Button>
+                            </Link>
+
+                            {isReady ? (
+                              order.paymentStatus === "PENDENTE" ? (
+                                order.paymentMethod === "FECHAMENTO_MENSAL" ? (
+                                  <>
+                                    <Button
+                                      className="w-full gap-2 bg-emerald-600 font-semibold text-white hover:bg-emerald-700"
+                                      size="sm"
+                                      onClick={() => void deliverOrder(order.id)}
+                                    >
+                                      Liberar veículo
+                                      <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      className="w-full bg-violet-600 font-semibold text-white hover:bg-violet-700"
+                                      size="sm"
+                                      onClick={() => setPayOrder(order)}
+                                    >
+                                      Receber fechamento
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    className="w-full bg-amber-600 font-semibold text-white hover:bg-amber-700"
+                                    size="sm"
+                                    onClick={() => setPayOrder(order)}
+                                  >
+                                    Receber pagamento
+                                  </Button>
+                                )
+                              ) : (
                                 <Button
                                   className="w-full gap-2 bg-emerald-600 font-semibold text-white hover:bg-emerald-700"
                                   size="sm"
@@ -263,52 +313,29 @@ export default function PainelPage() {
                                   Liberar veículo
                                   <ChevronRight className="h-4 w-4" />
                                 </Button>
-                                <Button
-                                  className="w-full bg-violet-600 font-semibold text-white hover:bg-violet-700"
-                                  size="sm"
-                                  onClick={() => setPayOrder(order)}
-                                >
-                                  Receber fechamento
-                                </Button>
-                              </>
+                              )
                             ) : (
                               <Button
-                                className="w-full bg-amber-600 font-semibold text-white hover:bg-amber-700"
+                                className="w-full gap-2 bg-emerald-600 font-semibold text-white shadow-md hover:bg-emerald-700"
                                 size="sm"
-                                onClick={() => setPayOrder(order)}
+                                onClick={() => void advanceOrder(order)}
                               >
-                                Receber pagamento
+                                {nextLabel ? `Avançar → ${nextLabel}` : "Avançar etapa"}
+                                <ChevronRight className="h-4 w-4" />
                               </Button>
-                            )
-                          ) : (
-                            <Button
-                              className="w-full gap-2 bg-emerald-600 font-semibold text-white hover:bg-emerald-700"
-                              size="sm"
-                              onClick={() => void deliverOrder(order.id)}
-                            >
-                              Liberar veículo
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          )
-                        ) : (
-                          <Button
-                            className="w-full gap-2 bg-emerald-600 font-semibold text-white shadow-md hover:bg-emerald-700"
-                            size="sm"
-                            onClick={() => void advanceStatus(order)}
-                          >
-                            Avançar etapa
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                {orders.filter((o) => o.status === status).length === 0 && (
-                  <p className="text-sm text-slate-400">Nenhum veículo</p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {colOrders.length === 0 && (
+                      <p className="text-sm text-slate-400">Nenhum veículo</p>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       )}
 

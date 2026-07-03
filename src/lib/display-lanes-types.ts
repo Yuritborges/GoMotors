@@ -24,6 +24,7 @@ export type DisplayColumn = {
 export type DisplayOrderInput = {
   id: string;
   status: string;
+  currentLane?: string | null;
   vehicle: { plate: string };
   client: { name: string };
   items: { serviceName: string; employee: { name: string } | null }[];
