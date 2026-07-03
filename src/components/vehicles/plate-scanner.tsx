@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { Camera, ImageIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { prepareImageForOcr } from "@/lib/plate-image";
-import { recognizePlateFromImage } from "@/lib/plate-ocr";
+import { recognizePlateCandidatesFromImage } from "@/lib/plate-ocr";
 
 type PlateScannerProps = {
   onPlateDetected: (plate: string) => void;
@@ -70,7 +70,7 @@ export function PlateScanner({
         const prepared = await prepareImageForOcr(file);
         setStatusMessage("Carregando leitor… (1ª vez pode demorar)");
 
-        const plate = await recognizePlateFromImage(prepared, (pct) => {
+        const candidates = await recognizePlateCandidatesFromImage(prepared, (pct) => {
           if (pct < 15) {
             setStatusMessage("Carregando leitor… (1ª vez pode demorar)");
           } else {
@@ -78,14 +78,35 @@ export function PlateScanner({
           }
         });
 
-        if (!plate) {
+        if (candidates.length === 0) {
           setLocalError(
             "Não encontramos a placa na foto. Enquadre só a placa ou digite manualmente."
           );
           return;
         }
 
-        setLocalError(null);
+        let plate: string | null = null;
+        for (const candidate of candidates.slice(0, 8)) {
+          const res = await fetch(
+            `/api/vehicles/lookup?plate=${encodeURIComponent(candidate)}`
+          );
+          if (!res.ok) continue;
+          const data = (await res.json()) as { found?: boolean };
+          if (data.found) {
+            plate = candidate;
+            break;
+          }
+        }
+
+        if (!plate) {
+          plate = candidates[0];
+          setLocalError(
+            `Placa lida como ${plate}, mas não está no cadastro. Confira os caracteres ou cadastre o veículo.`
+          );
+        } else {
+          setLocalError(null);
+        }
+
         onPlateDetected(plate);
       } catch (err) {
         setLocalError(toUserMessage(err));

@@ -79,8 +79,8 @@ function scorePlateGuess(plate: string, compactSource: string): number {
   return score;
 }
 
-/** Extrai a melhor placa brasileira encontrada no texto do OCR. */
-export function extractPlateFromText(raw: string): string | null {
+/** Extrai todas as placas candidatas, da mais provável à menos. */
+export function extractAllPlateCandidates(raw: string): string[] {
   const upper = raw.toUpperCase();
   const candidates = new Set<string>();
 
@@ -97,21 +97,27 @@ export function extractPlateFromText(raw: string): string | null {
   const withoutNoise = compact
     .replace(/BRASIL/g, "")
     .replace(/MERCOSUL/g, "")
-    .replace(/DETRAN/g, "");
+    .replace(/DETRAN/g, "")
+    .replace(/BR/g, "");
   candidatesPush(candidates, withoutNoise);
 
   const ranked: string[] = [];
+  const seen = new Set<string>();
   for (const candidate of candidates) {
     const normalized = normalizePlateGuess(candidate);
-    if (isValidBrazilianPlate(normalized)) {
+    if (isValidBrazilianPlate(normalized) && !seen.has(normalized)) {
+      seen.add(normalized);
       ranked.push(normalized);
     }
   }
 
-  if (ranked.length === 0) return null;
-
   ranked.sort((a, b) => scorePlateGuess(b, compact) - scorePlateGuess(a, compact));
-  return ranked[0] ?? null;
+  return ranked;
+}
+
+/** Extrai a melhor placa brasileira encontrada no texto do OCR. */
+export function extractPlateFromText(raw: string): string | null {
+  return extractAllPlateCandidates(raw)[0] ?? null;
 }
 
 type CropRegion = { x: number; y: number; w: number; h: number };
@@ -122,15 +128,41 @@ const CROP_REGIONS: CropRegion[] = [
   { x: 0.02, y: 0.35, w: 0.96, h: 0.32 },
 ];
 
+/** Faixa central — foto só da placa (horizontal, close-up). */
+const CLOSEUP_REGIONS: CropRegion[] = [
+  { x: 0.02, y: 0.28, w: 0.96, h: 0.44 },
+  { x: 0.05, y: 0.32, w: 0.9, h: 0.36 },
+  { x: 0, y: 0.35, w: 1, h: 0.3 },
+];
+
 type EnhanceMode = "none" | "soft" | "strong";
 
-const OCR_JOBS: { region: CropRegion | null; enhance: EnhanceMode }[] = [
-  { region: null, enhance: "none" },
-  { region: CROP_REGIONS[0], enhance: "soft" },
-  { region: CROP_REGIONS[0], enhance: "strong" },
-  { region: CROP_REGIONS[1], enhance: "soft" },
-  { region: CROP_REGIONS[2], enhance: "soft" },
-];
+function buildOcrJobs(bitmap: ImageBitmap): { region: CropRegion | null; enhance: EnhanceMode }[] {
+  const aspect = bitmap.width / bitmap.height;
+  const isCloseup = aspect > 1.15;
+
+  const jobs: { region: CropRegion | null; enhance: EnhanceMode }[] = [];
+
+  if (isCloseup) {
+    jobs.push(
+      { region: null, enhance: "strong" },
+      { region: CLOSEUP_REGIONS[0], enhance: "strong" },
+      { region: CLOSEUP_REGIONS[1], enhance: "soft" },
+      { region: null, enhance: "soft" },
+      { region: CLOSEUP_REGIONS[2], enhance: "strong" }
+    );
+  }
+
+  jobs.push(
+    { region: null, enhance: "none" },
+    { region: CROP_REGIONS[0], enhance: "soft" },
+    { region: CROP_REGIONS[0], enhance: "strong" },
+    { region: CROP_REGIONS[1], enhance: "soft" },
+    { region: CROP_REGIONS[2], enhance: "soft" }
+  );
+
+  return jobs;
+}
 
 async function canvasToBlob(canvas: HTMLCanvasElement, quality = 0.92): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -199,9 +231,10 @@ export async function buildOcrImageVariants(file: Blob): Promise<Blob[]> {
   const variants: Blob[] = [];
   const targetW = 1400;
   const fullRegion: CropRegion = { x: 0, y: 0, w: 1, h: 1 };
+  const jobs = buildOcrJobs(bitmap);
 
   try {
-    for (const job of OCR_JOBS) {
+    for (const job of jobs) {
       const region = job.region ?? fullRegion;
       drawRegion(ctx, bitmap, region, targetW, job.enhance);
       variants.push(await canvasToBlob(canvas));
@@ -213,7 +246,7 @@ export async function buildOcrImageVariants(file: Blob): Promise<Blob[]> {
   return variants;
 }
 
-const PSM_MODES = ["SINGLE_LINE", "SINGLE_BLOCK", "SPARSE_TEXT", "AUTO"] as const;
+const PSM_MODES = ["SINGLE_LINE", "SINGLE_BLOCK"] as const;
 
 const TESSERACT_CDN = "https://cdn.jsdelivr.net/npm";
 const TESSERACT_VER = "7.0.0";
@@ -255,14 +288,32 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   });
 }
 
-/** Roda OCR em vários recortes e modos até encontrar uma placa válida. */
-export async function recognizePlateFromImage(
+function collectHitsFromOcr(
+  text: string,
+  confidence: number,
+  hits: Map<string, number>,
+  bonus = 0
+) {
+  for (const plate of extractAllPlateCandidates(text)) {
+    const prev = hits.get(plate) ?? 0;
+    hits.set(
+      plate,
+      prev +
+        confidence +
+        bonus +
+        scorePlateGuess(plate, text.replace(/[^A-Z0-9]/gi, "").toUpperCase()) * 8
+    );
+  }
+}
+
+/** Roda OCR e devolve candidatos ordenados por confiança. */
+export async function recognizePlateCandidatesFromImage(
   file: Blob,
   onProgress?: (pct: number) => void
-): Promise<string | null> {
+): Promise<string[]> {
   onProgress?.(1);
 
-  const run = async (): Promise<string | null> => {
+  const run = async (): Promise<string[]> => {
     const Tesseract = (await import("tesseract.js")).default;
     onProgress?.(5);
 
@@ -275,13 +326,16 @@ export async function recognizePlateFromImage(
       tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     });
 
-    let best: string | null = null;
+    const hits = new Map<string, number>();
 
     try {
       const total = variants.length * PSM_MODES.length;
       let step = 0;
 
-      for (const variant of variants) {
+      for (let vi = 0; vi < variants.length; vi++) {
+        const variant = variants[vi];
+        const closeupBonus = vi < 5 ? 20 : 0;
+
         for (const psm of PSM_MODES) {
           step += 1;
           onProgress?.(Math.min(99, 10 + Math.round((step / total) * 85)));
@@ -290,20 +344,34 @@ export async function recognizePlateFromImage(
             tessedit_pageseg_mode: Tesseract.PSM[psm],
           });
           const { data } = await worker.recognize(variant);
-          const found = extractPlateFromText(data.text);
-          if (found) {
-            best = found;
-            break;
+          const page = data as {
+            text: string;
+            confidence: number;
+            lines?: { text: string; confidence: number }[];
+            words?: { text: string; confidence: number }[];
+          };
+
+          collectHitsFromOcr(page.text, page.confidence, hits, closeupBonus);
+
+          for (const line of page.lines ?? []) {
+            collectHitsFromOcr(line.text, line.confidence, hits, closeupBonus + 5);
+          }
+          for (const word of page.words ?? []) {
+            if (word.text.length >= 6) {
+              collectHitsFromOcr(word.text, word.confidence, hits, closeupBonus);
+            }
           }
         }
-        if (best) break;
       }
     } finally {
       await worker.terminate();
     }
 
     onProgress?.(100);
-    return best;
+
+    return [...hits.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([plate]) => plate);
   };
 
   return withTimeout(
@@ -311,6 +379,15 @@ export async function recognizePlateFromImage(
     OCR_TIMEOUT_MS,
     "O leitor de placa demorou demais. Tente outra foto ou digite a placa."
   );
+}
+
+/** Roda OCR em vários recortes e modos até encontrar uma placa válida. */
+export async function recognizePlateFromImage(
+  file: Blob,
+  onProgress?: (pct: number) => void
+): Promise<string | null> {
+  const candidates = await recognizePlateCandidatesFromImage(file, onProgress);
+  return candidates[0] ?? null;
 }
 
 /** Gera variantes comuns de confusão OCR para busca no banco. */
