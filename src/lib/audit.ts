@@ -11,15 +11,19 @@ export type AuditInput = {
 };
 
 export async function logAudit(input: AuditInput) {
-  await prisma.auditLog.create({
-    data: {
-      userId: input.user?.id ?? null,
-      userName: input.user?.name ?? "Sistema",
-      action: input.action,
-      entityType: input.entityType,
-      entityId: input.entityId ?? null,
-      summary: input.summary,
-      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
-    },
-  });
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId: input.user?.id ?? null,
+        userName: input.user?.name ?? "Sistema",
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId ?? null,
+        summary: input.summary,
+        metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+      },
+    });
+  } catch (err) {
+    console.error("[audit]", err);
+  }
 }

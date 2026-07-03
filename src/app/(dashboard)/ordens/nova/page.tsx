@@ -359,6 +359,32 @@ export default function NovaOrdemPage() {
       }));
 
     setSaving(true);
+    let redirecting = false;
+    const plateForRedirect =
+      selectedVehicle?.plate ??
+      plateLookup?.vehicle?.plate ??
+      formatPlate(plateQuery);
+
+    async function recoverCreatedOrder(): Promise<boolean> {
+      if (plateForRedirect.length < 6) return false;
+      try {
+        const lookupRes = await fetch(
+          `/api/vehicles/lookup?plate=${encodeURIComponent(plateForRedirect)}`
+        );
+        if (!lookupRes.ok) return false;
+        const lookup = (await lookupRes.json()) as PlateLookup;
+        const orderId = lookup.activeOrder?.id;
+        if (!orderId) return false;
+        redirecting = true;
+        window.location.assign(
+          `/ordens/${orderId}/comprovante?registered=1&plate=${encodeURIComponent(plateForRedirect)}`
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -374,22 +400,34 @@ export default function NovaOrdemPage() {
           ...(retroactive ? { entryAt: new Date(entryAtLocal).toISOString() } : {}),
         }),
       });
-      const order = await res.json();
+
+      const raw = await res.text();
+      let order: { id?: string; error?: string } = {};
+      try {
+        order = raw ? JSON.parse(raw) : {};
+      } catch {
+        if (await recoverCreatedOrder()) return;
+        alert("Resposta inválida do servidor. Verifique o painel.");
+        return;
+      }
+
       if (res.ok && order.id) {
-        const plate =
-          selectedVehicle?.plate ??
-          plateLookup?.vehicle?.plate ??
-          plateQuery.toUpperCase();
+        redirecting = true;
         window.location.assign(
-          `/ordens/${order.id}/comprovante?registered=1&plate=${encodeURIComponent(plate)}`
+          `/ordens/${order.id}/comprovante?registered=1&plate=${encodeURIComponent(plateForRedirect)}`
         );
         return;
       }
+
+      if (await recoverCreatedOrder()) return;
       alert(order.error ?? "Erro ao registrar ordem.");
     } catch {
-      alert("Erro de conexão ao registrar ordem. Verifique o painel antes de tentar de novo.");
+      if (await recoverCreatedOrder()) return;
+      alert(
+        "Não foi possível confirmar o registro. Verifique o painel — se o veículo aparecer na fila, a ordem foi criada."
+      );
     } finally {
-      setSaving(false);
+      if (!redirecting) setSaving(false);
     }
   }
 
