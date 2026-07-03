@@ -46,8 +46,6 @@ export function QuickClientForm({
   const [showDetails, setShowDetails] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [ocrError, setOcrError] = useState("");
-
   async function handleSubmit(openOrder: boolean) {
     setError("");
     const plate = formatPlate(form.plate);
@@ -136,17 +134,9 @@ export function QuickClientForm({
       <PlateScanner
         disabled={saving}
         onPlateDetected={(plate) => {
-          setOcrError("");
           setForm((prev) => ({ ...prev, plate }));
         }}
-        onError={setOcrError}
       />
-
-      {ocrError && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">
-          {ocrError}
-        </p>
-      )}
 
       <Field>
         <Label>Nome do cliente *</Label>

@@ -89,7 +89,6 @@ export default function NovaOrdemPage() {
   const [plateQuery, setPlateQuery] = useState("");
   const [plateLookup, setPlateLookup] = useState<PlateLookup | null>(null);
   const [plateLoading, setPlateLoading] = useState(false);
-  const [plateOcrError, setPlateOcrError] = useState("");
 
   const lookupPlate = useCallback(async (raw: string) => {
     const plate = formatPlate(raw);
@@ -421,18 +420,10 @@ export default function NovaOrdemPage() {
 
           <PlateScanner
             onPlateDetected={(plate) => {
-              setPlateOcrError("");
               setPlateQuery(plate);
               void lookupPlate(plate);
             }}
-            onError={setPlateOcrError}
           />
-
-          {plateOcrError && (
-            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">
-              {plateOcrError}
-            </p>
-          )}
 
           {plateLoading && (
             <p className="text-center text-sm text-sky-700 sm:text-left">Buscando placa...</p>

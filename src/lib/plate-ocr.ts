@@ -213,7 +213,32 @@ export async function buildOcrImageVariants(file: Blob): Promise<Blob[]> {
   return variants;
 }
 
-const PSM_MODES = ["SPARSE_TEXT", "SINGLE_BLOCK", "AUTO", "SINGLE_LINE"] as const;
+const PSM_MODES = ["SINGLE_LINE", "SINGLE_BLOCK", "SPARSE_TEXT", "AUTO"] as const;
+
+const TESSERACT_CDN = "https://cdn.jsdelivr.net/npm";
+const TESSERACT_VER = "7.0.0";
+
+function getBrowserTesseractWorkerOptions(
+  onProgress?: (pct: number) => void
+) {
+  return {
+    workerPath: `${TESSERACT_CDN}/tesseract.js@${TESSERACT_VER}/dist/worker.min.js`,
+    corePath: `${TESSERACT_CDN}/tesseract.js-core@${TESSERACT_VER}/tesseract-core-simd-lstm.wasm.js`,
+    langPath: "https://tessdata.projectnaptha.com/4.0.0",
+    logger: (m: { status: string; progress?: number }) => {
+      if (
+        m.status === "loading tesseract core" ||
+        m.status === "initializing tesseract" ||
+        m.status === "loading language traineddata"
+      ) {
+        onProgress?.(12);
+      }
+      if (m.status === "recognizing text" && typeof m.progress === "number") {
+        onProgress?.(Math.max(15, Math.round(m.progress * 100)));
+      }
+    },
+  };
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -244,16 +269,7 @@ export async function recognizePlateFromImage(
     const variants = await buildOcrImageVariants(file);
     onProgress?.(10);
 
-    const worker = await Tesseract.createWorker("eng", 1, {
-      logger: (m) => {
-        if (m.status === "loading tesseract core" || m.status === "initializing tesseract") {
-          onProgress?.(12);
-        }
-        if (m.status === "recognizing text" && typeof m.progress === "number") {
-          onProgress?.(Math.max(15, Math.round(m.progress * 100)));
-        }
-      },
-    });
+    const worker = await Tesseract.createWorker("eng", 1, getBrowserTesseractWorkerOptions(onProgress));
 
     await worker.setParameters({
       tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",

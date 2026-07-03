@@ -5,10 +5,5 @@
     "deploymentEnabled": {
       "main": true
     }
-  },
-  "functions": {
-    "src/app/api/plate-ocr/route.ts": {
-      "maxDuration": 30
-    }
   }
 }

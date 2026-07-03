@@ -4,10 +4,10 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { Camera, ImageIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { prepareImageForOcr } from "@/lib/plate-image";
+import { recognizePlateFromImage } from "@/lib/plate-ocr";
 
 type PlateScannerProps = {
   onPlateDetected: (plate: string) => void;
-  onError?: (message: string) => void;
   disabled?: boolean;
   className?: string;
 };
@@ -17,9 +17,23 @@ type ScanPhase = "idle" | "processing";
 const actionClassName =
   "inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-slate-100 text-base font-medium text-slate-900 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 touch-manipulation active:scale-[0.99] sm:h-11 sm:text-sm";
 
+function toUserMessage(err: unknown): string {
+  if (err instanceof Error) {
+    const msg = err.message;
+    if (
+      msg.includes("JSON") ||
+      msg.includes("pattern") ||
+      msg.includes("Unexpected token")
+    ) {
+      return "Erro ao ler a placa. Tente outra foto ou digite manualmente.";
+    }
+    return msg;
+  }
+  return "Erro ao processar a foto. Tente novamente ou digite a placa.";
+}
+
 export function PlateScanner({
   onPlateDetected,
-  onError,
   disabled,
   className,
 }: PlateScannerProps) {
@@ -45,7 +59,6 @@ export function PlateScanner({
       setPhase("processing");
       setStatusMessage("Preparando foto…");
       setLocalError(null);
-      onError?.("");
 
       const url = URL.createObjectURL(file);
       setPreviewUrl((prev) => {
@@ -55,47 +68,33 @@ export function PlateScanner({
 
       try {
         const prepared = await prepareImageForOcr(file);
-        setStatusMessage("Enviando e lendo placa…");
+        setStatusMessage("Carregando leitor… (1ª vez pode demorar)");
 
-        const formData = new FormData();
-        formData.append("image", prepared, "plate.jpg");
-
-        const res = await fetch("/api/plate-ocr", {
-          method: "POST",
-          body: formData,
+        const plate = await recognizePlateFromImage(prepared, (pct) => {
+          if (pct < 15) {
+            setStatusMessage("Carregando leitor… (1ª vez pode demorar)");
+          } else {
+            setStatusMessage(`Lendo placa… ${pct}%`);
+          }
         });
 
-        const data = (await res.json()) as { plate?: string | null; error?: string };
-
-        if (!res.ok) {
-          throw new Error(data.error ?? "Não foi possível ler a placa.");
-        }
-
-        if (!data.plate) {
-          const message =
-            data.error ??
-            "Não encontramos a placa na foto. Enquadre só a placa ou digite manualmente.";
-          setLocalError(message);
-          onError?.(message);
+        if (!plate) {
+          setLocalError(
+            "Não encontramos a placa na foto. Enquadre só a placa ou digite manualmente."
+          );
           return;
         }
 
-        setStatusMessage(null);
         setLocalError(null);
-        onPlateDetected(data.plate);
+        onPlateDetected(plate);
       } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : "Erro ao processar a foto. Tente novamente ou digite a placa.";
-        setLocalError(message);
-        onError?.(message);
+        setLocalError(toUserMessage(err));
       } finally {
         setPhase("idle");
         setStatusMessage(null);
       }
     },
-    [disabled, onError, onPlateDetected, phase]
+    [disabled, onPlateDetected, phase]
   );
 
   const onFileChange = useCallback(
@@ -142,7 +141,6 @@ export function PlateScanner({
         </div>
       ) : (
         <>
-          {/* Celular / tablet — mesmo breakpoint da navegação inferior */}
           <div className="grid grid-cols-2 gap-2 lg:hidden">
             <label htmlFor={cameraInputId} className={cn(actionClassName, "cursor-pointer")}>
               <Camera className="h-5 w-5 shrink-0" />
@@ -154,7 +152,6 @@ export function PlateScanner({
             </label>
           </div>
 
-          {/* Desktop */}
           <label
             htmlFor={galleryInputId}
             className={cn(actionClassName, "hidden cursor-pointer lg:inline-flex")}
