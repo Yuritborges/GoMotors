@@ -4,7 +4,10 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { Camera, ImageIcon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { prepareImageForOcr } from "@/lib/plate-image";
-import { recognizePlateCandidatesFromImage } from "@/lib/plate-ocr";
+import {
+  generatePlateLookupVariants,
+  recognizePlateCandidatesFromImage,
+} from "@/lib/plate-ocr";
 
 type PlateScannerProps = {
   onPlateDetected: (plate: string) => void;
@@ -32,6 +35,23 @@ function toUserMessage(err: unknown): string {
   return "Erro ao processar a foto. Tente novamente ou digite a placa.";
 }
 
+async function lookupPlateInDb(plate: string): Promise<string | null> {
+  const variants = generatePlateLookupVariants(plate);
+  const seen = new Set<string>();
+
+  for (const candidate of variants) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+
+    const res = await fetch(`/api/vehicles/lookup?plate=${encodeURIComponent(candidate)}`);
+    if (!res.ok) continue;
+    const data = (await res.json()) as { found?: boolean; plate?: string };
+    if (data.found && data.plate) return data.plate;
+  }
+
+  return null;
+}
+
 export function PlateScanner({
   onPlateDetected,
   disabled,
@@ -45,12 +65,22 @@ export function PlateScanner({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pickCandidates, setPickCandidates] = useState<string[]>([]);
 
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
+
+  const applyPlate = useCallback(
+    (plate: string) => {
+      setPickCandidates([]);
+      setLocalError(null);
+      onPlateDetected(plate);
+    },
+    [onPlateDetected]
+  );
 
   const processFile = useCallback(
     async (file: File) => {
@@ -59,6 +89,7 @@ export function PlateScanner({
       setPhase("processing");
       setStatusMessage("Preparando foto…");
       setLocalError(null);
+      setPickCandidates([]);
 
       const url = URL.createObjectURL(file);
       setPreviewUrl((prev) => {
@@ -80,34 +111,35 @@ export function PlateScanner({
 
         if (candidates.length === 0) {
           setLocalError(
-            "Não encontramos a placa na foto. Enquadre só a placa ou digite manualmente."
+            "Não encontramos a placa na foto. Enquadre só a placa (duas linhas) ou digite manualmente."
           );
           return;
         }
 
-        let plate: string | null = null;
-        for (const candidate of candidates.slice(0, 8)) {
-          const res = await fetch(
-            `/api/vehicles/lookup?plate=${encodeURIComponent(candidate)}`
-          );
-          if (!res.ok) continue;
-          const data = (await res.json()) as { found?: boolean };
-          if (data.found) {
-            plate = candidate;
-            break;
-          }
+        const unique = [...new Set(candidates)].slice(0, 8);
+        let matched: string | null = null;
+
+        for (const candidate of unique) {
+          matched = await lookupPlateInDb(candidate);
+          if (matched) break;
         }
 
-        if (!plate) {
-          plate = candidates[0];
+        if (matched) {
+          applyPlate(matched);
+          return;
+        }
+
+        const top = unique.slice(0, 4);
+        if (top.length === 1) {
           setLocalError(
-            `Placa lida como ${plate}, mas não está no cadastro. Confira os caracteres ou cadastre o veículo.`
+            `Placa lida como ${top[0]}, mas não está no cadastro. Confira ou cadastre o veículo.`
           );
-        } else {
-          setLocalError(null);
+          applyPlate(top[0]);
+          return;
         }
 
-        onPlateDetected(plate);
+        setPickCandidates(top);
+        setLocalError("Toque na placa correta abaixo ou digite manualmente.");
       } catch (err) {
         setLocalError(toUserMessage(err));
       } finally {
@@ -115,7 +147,7 @@ export function PlateScanner({
         setStatusMessage(null);
       }
     },
-    [disabled, onPlateDetected, phase]
+    [applyPlate, disabled, phase]
   );
 
   const onFileChange = useCallback(
@@ -184,7 +216,7 @@ export function PlateScanner({
       )}
 
       <p className="text-center text-xs text-slate-500 lg:hidden">
-        Enquadre só a placa na foto, com boa luz.
+        Enquadre só a placa na foto. Placas em duas linhas (moto): aproxime e use boa luz.
       </p>
       <p className="hidden text-xs text-slate-500 lg:block">
         Selecione uma foto da placa salva no computador.
@@ -198,6 +230,24 @@ export function PlateScanner({
             alt="Prévia da foto"
             className="max-h-40 w-full object-cover"
           />
+        </div>
+      )}
+
+      {pickCandidates.length > 0 && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+          <p className="mb-2 text-sm font-medium text-sky-950">Qual placa aparece na foto?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {pickCandidates.map((plate) => (
+              <button
+                key={plate}
+                type="button"
+                className="min-h-[44px] rounded-lg border border-sky-300 bg-white px-3 py-2 text-base font-bold tracking-widest text-slate-900 touch-manipulation hover:bg-sky-100"
+                onClick={() => applyPlate(plate)}
+              >
+                {plate}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

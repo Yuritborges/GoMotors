@@ -29,7 +29,7 @@ export async function prepareImageForOcr(file: Blob): Promise<Blob> {
   const bitmap = await loadImageBitmap(file);
 
   try {
-    const maxSide = 2400;
+    const maxSide = 3200;
     let w = bitmap.width;
     let h = bitmap.height;
 

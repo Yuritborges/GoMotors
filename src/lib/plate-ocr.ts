@@ -221,11 +221,18 @@ function drawRegion(
 /** Gera recortes da foto onde a placa costuma aparecer (foto vertical no celular). */
 export async function buildOcrImageVariants(file: Blob): Promise<Blob[]> {
   const bitmap = await loadImageBitmap(file);
+  try {
+    return await buildOcrImageVariantsFromBitmap(bitmap);
+  } finally {
+    bitmap.close();
+  }
+}
+
+export async function buildOcrImageVariantsFromBitmap(bitmap: ImageBitmap): Promise<Blob[]> {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) {
-    bitmap.close();
-    return [file];
+    return [];
   }
 
   const variants: Blob[] = [];
@@ -240,10 +247,98 @@ export async function buildOcrImageVariants(file: Blob): Promise<Blob[]> {
       variants.push(await canvasToBlob(canvas));
     }
   } finally {
-    bitmap.close();
+    /* bitmap fechado pelo chamador */
   }
 
   return variants;
+}
+
+/** Placa Mercosul em duas linhas (moto/carro): SVP + 6A10 → SVP6A10 */
+const TWO_LINE_TOP_REGIONS: CropRegion[] = [
+  { x: 0.05, y: 0.1, w: 0.9, h: 0.36 },
+  { x: 0.08, y: 0.14, w: 0.84, h: 0.32 },
+  { x: 0.02, y: 0.08, w: 0.96, h: 0.4 },
+];
+
+const TWO_LINE_BOTTOM_REGIONS: CropRegion[] = [
+  { x: 0.05, y: 0.48, w: 0.9, h: 0.36 },
+  { x: 0.08, y: 0.52, w: 0.84, h: 0.32 },
+  { x: 0.02, y: 0.45, w: 0.96, h: 0.4 },
+];
+
+/** Combina linha de cima (letras) + linha de baixo (números/letras). */
+export function mergeMercosulTwoLines(topRaw: string, bottomRaw: string): string[] {
+  const out = new Set<string>();
+
+  const topLetters = topRaw.toUpperCase().replace(/[^A-Z]/g, "");
+  const bottomAlnum = bottomRaw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const topAlnum = topRaw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  if (topLetters.length >= 3 && bottomAlnum.length >= 4) {
+    for (let i = 0; i <= topLetters.length - 3; i++) {
+      const head = topLetters.slice(i, i + 3);
+      for (let j = 0; j <= bottomAlnum.length - 4; j++) {
+        const tail = bottomAlnum.slice(j, j + 4);
+        const merged = normalizePlateGuess(head + tail);
+        if (isValidBrazilianPlate(merged)) out.add(merged);
+      }
+    }
+  }
+
+  const combined = `${topRaw}\n${bottomRaw}`;
+  for (const plate of extractAllPlateCandidates(combined)) out.add(plate);
+  for (const plate of extractAllPlateCandidates(topAlnum + bottomAlnum)) out.add(plate);
+
+  return [...out];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type OcrWorker = any;
+
+async function ocrBitmapRegion(
+  worker: OcrWorker,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Tesseract: any,
+  bitmap: ImageBitmap,
+  region: CropRegion,
+  enhance: EnhanceMode
+): Promise<string> {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+
+  drawRegion(ctx, bitmap, region, 2000, enhance);
+  await worker.setParameters({
+    tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+  });
+  const { data } = await worker.recognize(canvas);
+  return data.text ?? "";
+}
+
+async function runTwoLineMercosulPass(
+  worker: OcrWorker,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Tesseract: any,
+  bitmap: ImageBitmap,
+  hits: Map<string, number>
+) {
+  for (const topRegion of TWO_LINE_TOP_REGIONS) {
+    for (const bottomRegion of TWO_LINE_BOTTOM_REGIONS) {
+      for (const enhance of ["strong", "soft"] as const) {
+        const [topText, bottomText] = await Promise.all([
+          ocrBitmapRegion(worker, Tesseract, bitmap, topRegion, enhance),
+          ocrBitmapRegion(worker, Tesseract, bitmap, bottomRegion, enhance),
+        ]);
+
+        for (const plate of mergeMercosulTwoLines(topText, bottomText)) {
+          hits.set(plate, (hits.get(plate) ?? 0) + 120);
+        }
+
+        collectHitsFromOcr(topText, 40, hits, 30);
+        collectHitsFromOcr(bottomText, 40, hits, 30);
+      }
+    }
+  }
 }
 
 const PSM_MODES = ["SINGLE_LINE", "SINGLE_BLOCK"] as const;
@@ -317,7 +412,8 @@ export async function recognizePlateCandidatesFromImage(
     const Tesseract = (await import("tesseract.js")).default;
     onProgress?.(5);
 
-    const variants = await buildOcrImageVariants(file);
+    const bitmap = await loadImageBitmap(file);
+    const variants = await buildOcrImageVariantsFromBitmap(bitmap);
     onProgress?.(10);
 
     const worker = await Tesseract.createWorker("eng", 1, getBrowserTesseractWorkerOptions(onProgress));
@@ -329,6 +425,10 @@ export async function recognizePlateCandidatesFromImage(
     const hits = new Map<string, number>();
 
     try {
+      onProgress?.(12);
+      await runTwoLineMercosulPass(worker, Tesseract, bitmap, hits);
+      onProgress?.(25);
+
       const total = variants.length * PSM_MODES.length;
       let step = 0;
 
@@ -338,7 +438,7 @@ export async function recognizePlateCandidatesFromImage(
 
         for (const psm of PSM_MODES) {
           step += 1;
-          onProgress?.(Math.min(99, 10 + Math.round((step / total) * 85)));
+          onProgress?.(Math.min(99, 25 + Math.round((step / total) * 70)));
 
           await worker.setParameters({
             tessedit_pageseg_mode: Tesseract.PSM[psm],
@@ -364,6 +464,7 @@ export async function recognizePlateCandidatesFromImage(
         }
       }
     } finally {
+      bitmap.close();
       await worker.terminate();
     }
 
