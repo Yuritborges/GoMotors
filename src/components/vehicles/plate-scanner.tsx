@@ -35,9 +35,12 @@ function toUserMessage(err: unknown): string {
   return "Erro ao processar a foto. Tente novamente ou digite a placa.";
 }
 
-async function lookupPlateInDb(plate: string): Promise<string | null> {
+async function lookupPlateInDb(
+  plate: string
+): Promise<{ match: string | null; suggestions: string[] }> {
   const variants = generatePlateLookupVariants(plate);
   const seen = new Set<string>();
+  const suggestions = new Set<string>();
 
   for (const candidate of variants) {
     if (!candidate || seen.has(candidate)) continue;
@@ -45,11 +48,16 @@ async function lookupPlateInDb(plate: string): Promise<string | null> {
 
     const res = await fetch(`/api/vehicles/lookup?plate=${encodeURIComponent(candidate)}`);
     if (!res.ok) continue;
-    const data = (await res.json()) as { found?: boolean; plate?: string };
-    if (data.found && data.plate) return data.plate;
+    const data = (await res.json()) as {
+      found?: boolean;
+      plate?: string;
+      suggestions?: string[];
+    };
+    if (data.found && data.plate) return { match: data.plate, suggestions: [] };
+    for (const s of data.suggestions ?? []) suggestions.add(s);
   }
 
-  return null;
+  return { match: null, suggestions: [...suggestions] };
 }
 
 export function PlateScanner({
@@ -117,29 +125,22 @@ export function PlateScanner({
         }
 
         const unique = [...new Set(candidates)].slice(0, 8);
-        let matched: string | null = null;
+        const dbSuggestions = new Set<string>();
 
         for (const candidate of unique) {
-          matched = await lookupPlateInDb(candidate);
-          if (matched) break;
+          const { match, suggestions } = await lookupPlateInDb(candidate);
+          if (match) {
+            applyPlate(match);
+            return;
+          }
+          for (const s of suggestions) dbSuggestions.add(s);
         }
 
-        if (matched) {
-          applyPlate(matched);
-          return;
-        }
-
-        const top = unique.slice(0, 4);
-        if (top.length === 1) {
-          setLocalError(
-            `Placa lida como ${top[0]}, mas não está no cadastro. Confira ou cadastre o veículo.`
-          );
-          applyPlate(top[0]);
-          return;
-        }
-
-        setPickCandidates(top);
-        setLocalError("Toque na placa correta abaixo ou digite manualmente.");
+        const pickList = [...new Set([...unique, ...dbSuggestions])].slice(0, 6);
+        setPickCandidates(pickList);
+        setLocalError(
+          "Confira a placa abaixo e toque na correta. Evite incluir a tarja azul BRASIL na foto."
+        );
       } catch (err) {
         setLocalError(toUserMessage(err));
       } finally {
@@ -235,8 +236,10 @@ export function PlateScanner({
 
       {pickCandidates.length > 0 && (
         <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
-          <p className="mb-2 text-sm font-medium text-sky-950">Qual placa aparece na foto?</p>
-          <div className="grid grid-cols-2 gap-2">
+          <p className="mb-2 text-sm font-medium text-sky-950">
+            Qual placa aparece na foto?
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {pickCandidates.map((plate) => (
               <button
                 key={plate}
@@ -248,6 +251,9 @@ export function PlateScanner({
               </button>
             ))}
           </div>
+          <p className="mt-2 text-xs text-sky-800">
+            Nenhuma bate? Digite a placa manualmente no campo acima.
+          </p>
         </div>
       )}
 

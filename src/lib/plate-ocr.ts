@@ -98,8 +98,16 @@ export function extractAllPlateCandidates(raw: string): string[] {
     .replace(/BRASIL/g, "")
     .replace(/MERCOSUL/g, "")
     .replace(/DETRAN/g, "")
-    .replace(/BR/g, "");
+    .replace(/^BR+/g, "")
+    .replace(/BR$/g, "");
   candidatesPush(candidates, withoutNoise);
+
+  // Janela deslizante de 7 chars no texto sem ruído da tarja azul
+  if (withoutNoise.length >= 7) {
+    for (let i = 0; i <= withoutNoise.length - 7; i++) {
+      candidates.add(withoutNoise.slice(i, i + 7));
+    }
+  }
 
   const ranked: string[] = [];
   const seen = new Set<string>();
@@ -122,13 +130,87 @@ export function extractPlateFromText(raw: string): string | null {
 
 type CropRegion = { x: number; y: number; w: number; h: number };
 
+const MERCOSUL_CHAR_BAND: CropRegion[] = [
+  { x: 0.17, y: 0.34, w: 0.8, h: 0.52 },
+  { x: 0.2, y: 0.38, w: 0.74, h: 0.46 },
+  { x: 0.14, y: 0.3, w: 0.84, h: 0.56 },
+  { x: 0.24, y: 0.42, w: 0.68, h: 0.4 },
+  { x: 0.1, y: 0.28, w: 0.88, h: 0.58 },
+];
+
+/** Detecta faixa branca dos caracteres (abaixo da tarja azul / QR à esquerda). */
+export function detectMercosulCharRegions(bitmap: ImageBitmap): CropRegion[] {
+  const sampleW = Math.min(bitmap.width, 480);
+  const scale = sampleW / bitmap.width;
+  const sampleH = Math.round(bitmap.height * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = sampleW;
+  canvas.height = sampleH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return MERCOSUL_CHAR_BAND;
+
+  ctx.drawImage(bitmap, 0, 0, sampleW, sampleH);
+  const data = ctx.getImageData(0, 0, sampleW, sampleH).data;
+
+  let bandEndY = 0.28;
+  for (let y = 0; y < sampleH * 0.45; y++) {
+    let blue = 0;
+    let samples = 0;
+    for (let x = 0; x < sampleW; x += 3) {
+      const i = (y * sampleW + x) * 4;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      if (b > 85 && b > r + 20 && b > g + 10) blue++;
+      samples++;
+    }
+    if (blue / samples < 0.1) {
+      bandEndY = y / sampleH;
+      break;
+    }
+  }
+
+  let leftEnd = 0.14;
+  const charRowStart = Math.floor(bandEndY * sampleH);
+  for (let x = 0; x < sampleW * 0.3; x += 2) {
+    let dark = 0;
+    let samples = 0;
+    for (let y = charRowStart; y < Math.min(sampleH, charRowStart + sampleH * 0.55); y += 3) {
+      const i = (y * sampleW + x) * 4;
+      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      if (gray < 135) dark++;
+      samples++;
+    }
+    if (samples > 0 && dark / samples > 0.32) {
+      leftEnd = Math.max(leftEnd, x / sampleW);
+    }
+  }
+
+  const y = Math.min(0.88, bandEndY + 0.03);
+  const x = Math.min(0.22, leftEnd + 0.02);
+  const w = Math.max(0.55, 0.97 - x);
+  const h = Math.min(0.6, 0.95 - y);
+
+  return [
+    { x, y, w, h },
+    { x: x + 0.02, y: y + 0.04, w: w - 0.04, h: h - 0.08 },
+    ...MERCOSUL_CHAR_BAND,
+  ];
+}
+
+function bannerNoisePenalty(plate: string): number {
+  if (/^(BRA|MER|DET|BR)/.test(plate)) return -80;
+  return 0;
+}
+
+/** Faixa central — foto só da placa (horizontal, close-up). */
 const CROP_REGIONS: CropRegion[] = [
   { x: 0.04, y: 0.22, w: 0.92, h: 0.38 },
   { x: 0.08, y: 0.28, w: 0.84, h: 0.28 },
   { x: 0.02, y: 0.35, w: 0.96, h: 0.32 },
 ];
 
-/** Faixa central — foto só da placa (horizontal, close-up). */
 const CLOSEUP_REGIONS: CropRegion[] = [
   { x: 0.02, y: 0.28, w: 0.96, h: 0.44 },
   { x: 0.05, y: 0.32, w: 0.9, h: 0.36 },
@@ -307,12 +389,34 @@ async function ocrBitmapRegion(
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
 
-  drawRegion(ctx, bitmap, region, 2000, enhance);
+  drawRegion(ctx, bitmap, region, 2800, enhance);
   await worker.setParameters({
     tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
   });
   const { data } = await worker.recognize(canvas);
   return data.text ?? "";
+}
+
+async function runMercosulCharBandPass(
+  worker: OcrWorker,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Tesseract: any,
+  bitmap: ImageBitmap,
+  hits: Map<string, number>
+) {
+  const regions = detectMercosulCharRegions(bitmap);
+
+  for (const region of regions) {
+    for (const enhance of ["strong", "soft"] as const) {
+      const text = await ocrBitmapRegion(worker, Tesseract, bitmap, region, enhance);
+
+      for (const plate of extractAllPlateCandidates(text)) {
+        const score = 200 + bannerNoisePenalty(plate);
+        hits.set(plate, (hits.get(plate) ?? 0) + score);
+      }
+      collectHitsFromOcr(text, 70, hits, 90);
+    }
+  }
 }
 
 async function runTwoLineMercosulPass(
@@ -426,8 +530,14 @@ export async function recognizePlateCandidatesFromImage(
 
     try {
       onProgress?.(12);
-      await runTwoLineMercosulPass(worker, Tesseract, bitmap, hits);
-      onProgress?.(25);
+      await runMercosulCharBandPass(worker, Tesseract, bitmap, hits);
+      onProgress?.(20);
+
+      const aspect = bitmap.width / bitmap.height;
+      if (aspect < 1.45) {
+        await runTwoLineMercosulPass(worker, Tesseract, bitmap, hits);
+      }
+      onProgress?.(28);
 
       const total = variants.length * PSM_MODES.length;
       let step = 0;
@@ -471,7 +581,7 @@ export async function recognizePlateCandidatesFromImage(
     onProgress?.(100);
 
     return [...hits.entries()]
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => b[1] + bannerNoisePenalty(b[0]) - (a[1] + bannerNoisePenalty(a[0])))
       .map(([plate]) => plate);
   };
 
