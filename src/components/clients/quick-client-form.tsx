@@ -133,6 +133,7 @@ export function QuickClientForm({
 
       <PlateScanner
         disabled={saving}
+        vehicleType={form.vehicleType}
         onPlateDetected={(plate) => {
           setForm((prev) => ({ ...prev, plate }));
         }}

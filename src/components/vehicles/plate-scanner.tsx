@@ -6,18 +6,16 @@ import { cn } from "@/lib/utils";
 import { prepareImageForOcr } from "@/lib/plate-image";
 import {
   generatePlateLookupVariants,
-  recognizeMotoPlateFromLineCrops,
   recognizePlateCandidatesFromImage,
 } from "@/lib/plate-ocr";
-import {
-  PlateCameraModal,
-  type PlateCaptureResult,
-} from "@/components/vehicles/plate-camera-modal";
+import { PlateCameraModal } from "@/components/vehicles/plate-camera-modal";
 
 type PlateScannerProps = {
   onPlateDetected: (plate: string) => void;
   disabled?: boolean;
   className?: string;
+  /** Motos: leitura por foto não é confiável — oculta câmera/galeria. */
+  vehicleType?: string;
 };
 
 type ScanPhase = "idle" | "processing";
@@ -69,7 +67,9 @@ export function PlateScanner({
   onPlateDetected,
   disabled,
   className,
+  vehicleType,
 }: PlateScannerProps) {
+  const isMoto = vehicleType === "MOTO";
   const reactId = useId().replace(/:/g, "");
   const galleryInputId = `plate-gallery-${reactId}`;
 
@@ -104,9 +104,7 @@ export function PlateScanner({
       });
 
       if (candidates.length === 0) {
-        setLocalError(
-          "Não encontramos a placa na foto. Use o modo Moto na câmera ou digite manualmente."
-        );
+        setLocalError("Não encontramos a placa na foto. Digite manualmente.");
         return;
       }
 
@@ -124,16 +122,14 @@ export function PlateScanner({
 
       const pickList = [...new Set([...unique, ...dbSuggestions])].slice(0, 6);
       setPickCandidates(pickList);
-      setLocalError(
-        "Toque na placa correta. No modo Moto, enquadre letras e números em molduras separadas."
-      );
+      setLocalError("Toque na placa correta ou digite manualmente.");
     },
     [applyPlate]
   );
 
   const processFile = useCallback(
     async (file: File) => {
-      if (disabled || phase === "processing") return;
+      if (disabled || phase === "processing" || isMoto) return;
 
       setPhase("processing");
       setStatusMessage("Preparando foto…");
@@ -160,48 +156,7 @@ export function PlateScanner({
         setStatusMessage(null);
       }
     },
-    [applyPlate, disabled, phase, processCandidates]
-  );
-
-  const processMotoCapture = useCallback(
-    async (top: Blob, bottom: Blob, preview: File) => {
-      if (disabled || phase === "processing") return;
-
-      setPhase("processing");
-      setStatusMessage("Lendo linha de letras…");
-      setLocalError(null);
-      setPickCandidates([]);
-
-      const url = URL.createObjectURL(preview);
-      setPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return url;
-      });
-
-      try {
-        const candidates = await recognizeMotoPlateFromLineCrops(top, bottom, (pct) => {
-          setStatusMessage(pct < 50 ? "Lendo letras…" : "Lendo números…");
-        });
-        await processCandidates(candidates, preview);
-      } catch (err) {
-        setLocalError(toUserMessage(err));
-      } finally {
-        setPhase("idle");
-        setStatusMessage(null);
-      }
-    },
-    [disabled, phase, processCandidates]
-  );
-
-  const handleCapture = useCallback(
-    (result: PlateCaptureResult) => {
-      if (result.type === "moto") {
-        void processMotoCapture(result.top, result.bottom, result.preview);
-      } else {
-        void processFile(result.file);
-      }
-    },
-    [processFile, processMotoCapture]
+    [disabled, isMoto, phase, processCandidates]
   );
 
   const onFileChange = useCallback(
@@ -219,6 +174,14 @@ export function PlateScanner({
 
   const busy = phase === "processing" || disabled;
 
+  if (isMoto) {
+    return (
+      <p className={cn("text-center text-xs text-slate-500", className)}>
+        Motos: digite a placa manualmente no campo acima.
+      </p>
+    );
+  }
+
   return (
     <div className={cn("relative space-y-2", className)}>
       <input
@@ -234,7 +197,7 @@ export function PlateScanner({
       <PlateCameraModal
         open={cameraOpen}
         onClose={() => setCameraOpen(false)}
-        onCapture={handleCapture}
+        onCapture={(file) => void processFile(file)}
       />
 
       {busy ? (
@@ -270,7 +233,7 @@ export function PlateScanner({
       )}
 
       <p className="text-center text-xs text-slate-500 lg:hidden">
-        Moto: use modo <strong>Moto</strong> na câmera — uma moldura para letras, outra para números.
+        Enquadre a placa de carro na moldura. Motos: digite manualmente.
       </p>
       <p className="hidden text-xs text-slate-500 lg:block">
         Selecione uma foto da placa salva no computador.
