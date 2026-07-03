@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { endOfDay, startOfDay } from "@/lib/utils";
 import { handleAuthError, requireOwner } from "@/lib/auth";
 import { isDeferredPaymentMethod } from "@/lib/payments";
+import { excludeImportedOrdersWhere } from "@/lib/imported-orders";
 
 export async function GET(request: Request) {
   try {
@@ -17,6 +18,7 @@ export async function GET(request: Request) {
       where: {
         entryAt: { gte: start, lte: end },
         status: { not: "CANCELADO" },
+        ...excludeImportedOrdersWhere,
       },
       include: {
         payments: true,

@@ -16,6 +16,7 @@ import {
 } from "@/lib/order-entry-date";
 import { handleAuthError, requireAuth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { excludeImportedOrdersWhere } from "@/lib/imported-orders";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
         lte: endOfDay(today),
       },
       ...(status ? { status: status as never } : {}),
+      ...excludeImportedOrdersWhere,
     },
     include: {
       client: true,

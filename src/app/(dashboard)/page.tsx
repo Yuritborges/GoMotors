@@ -8,12 +8,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StockAlertsBanner } from "@/components/stock-alerts-banner";
 import { PageHeader } from "@/components/layout/page-header";
+import { excludeImportedOrdersWhere } from "@/lib/imported-orders";
 
 async function getTodayOps() {
   const start = startOfDay(new Date());
   const end = endOfDay(new Date());
   const ordersToday = await prisma.serviceOrder.findMany({
-    where: { entryAt: { gte: start, lte: end }, status: { not: "CANCELADO" } },
+    where: {
+      entryAt: { gte: start, lte: end },
+      status: { not: "CANCELADO" },
+      ...excludeImportedOrdersWhere,
+    },
   });
   return {
     vehiclesToday: ordersToday.length,

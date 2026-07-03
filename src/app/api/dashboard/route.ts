@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { endOfDay, startOfDay } from "@/lib/utils";
 import { handleAuthError, requireOwner } from "@/lib/auth";
+import { excludeImportedOrdersWhere } from "@/lib/imported-orders";
 
 export async function GET(request: Request) {
   try {
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
       where: {
         entryAt: { gte: startOfDay(new Date()), lte: endOfDay(new Date()) },
         status: { not: "CANCELADO" },
+        ...excludeImportedOrdersWhere,
       },
     }),
     prisma.serviceOrder.findMany({

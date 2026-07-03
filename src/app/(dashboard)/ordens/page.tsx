@@ -70,7 +70,7 @@ export default function OrdensPage() {
     <div className="space-y-6">
       <PageHeader
         title="Ordens de serviço"
-        description={`Ordens de ${dateLabel}`}
+        description={`Ordens operacionais de ${dateLabel}`}
       >
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <Input
@@ -127,7 +127,7 @@ export default function OrdensPage() {
         ))}
         {orders.length === 0 && (
           <p className="py-8 text-center text-sm text-slate-500">
-            Nenhuma ordem em {dateLabel}.
+            Nenhuma ordem operacional em {dateLabel}.
           </p>
         )}
       </div>
@@ -183,7 +183,7 @@ export default function OrdensPage() {
           </table>
           {orders.length === 0 && (
             <p className="py-8 text-center text-sm text-slate-500">
-              Nenhuma ordem em {dateLabel}.
+              Nenhuma ordem operacional em {dateLabel}.
             </p>
           )}
         </CardContent>
