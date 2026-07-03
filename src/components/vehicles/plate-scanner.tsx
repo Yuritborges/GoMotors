@@ -2,11 +2,10 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Camera, Loader2, X } from "lucide-react";
+import { Camera, ImageIcon, Loader2, Video, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  recognizePlateFromImage,
-} from "@/lib/plate-ocr";
+import { prepareImageForOcr } from "@/lib/plate-image";
+import { recognizePlateFromImage } from "@/lib/plate-ocr";
 import { Button } from "@/components/ui/button";
 
 type PlateScannerProps = {
@@ -44,21 +43,29 @@ async function requestCameraStream(): Promise<MediaStream> {
   throw lastError ?? new Error("Câmera indisponível");
 }
 
+const actionClassName =
+  "inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-slate-100 text-base font-medium text-slate-900 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 touch-manipulation active:scale-[0.99] sm:h-11 sm:text-sm";
+
 export function PlateScanner({
   onPlateDetected,
   onError,
   disabled,
   className,
 }: PlateScannerProps) {
-  const inputId = useId();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const reactId = useId().replace(/:/g, "");
+  const cameraInputId = `plate-camera-${reactId}`;
+  const galleryInputId = `plate-gallery-${reactId}`;
+
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
   const [mounted, setMounted] = useState(false);
   const [touchDevice, setTouchDevice] = useState(false);
-
   const [phase, setPhase] = useState<ScanPhase>("idle");
   const [progress, setProgress] = useState(0);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraStarting, setCameraStarting] = useState(false);
@@ -96,12 +103,13 @@ export function PlateScanner({
       .play()
       .then(() => setCameraError(null))
       .catch(() => {
-        setCameraError("Não foi possível exibir a câmera. Use a galeria abaixo.");
+        setCameraError("Não foi possível exibir a câmera. Use tirar foto ou galeria.");
       });
   }, [phase, cameraStream]);
 
   const reportError = useCallback(
     (message: string) => {
+      setStatusMessage(null);
       onError?.(message);
     },
     [onError]
@@ -110,7 +118,9 @@ export function PlateScanner({
   const runOcr = useCallback(
     async (file: Blob) => {
       setPhase("processing");
-      setProgress(0);
+      setProgress(2);
+      setStatusMessage("Preparando foto…");
+      onError?.("");
 
       const url = URL.createObjectURL(file);
       setPreviewUrl((prev) => {
@@ -119,7 +129,11 @@ export function PlateScanner({
       });
 
       try {
-        const plate = await recognizePlateFromImage(file, setProgress);
+        const prepared = await prepareImageForOcr(file);
+        setStatusMessage("Lendo placa…");
+        setProgress(5);
+
+        const plate = await recognizePlateFromImage(prepared, setProgress);
 
         if (!plate) {
           reportError(
@@ -129,35 +143,46 @@ export function PlateScanner({
           return;
         }
 
+        setStatusMessage(null);
         onPlateDetected(plate);
         setPhase("idle");
-      } catch {
-        reportError("Erro ao processar a foto. Tente novamente ou digite a placa.");
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Erro ao processar a foto. Tente novamente ou digite a placa.";
+        reportError(message);
         setPhase("idle");
       }
     },
-    [onPlateDetected, reportError]
+    [onPlateDetected, onError, reportError]
   );
 
-  async function handleFile(file: File | null | undefined) {
-    if (!file || disabled) return;
-    await runOcr(file);
-  }
+  const handleFileInput = useCallback(
+    async (input: HTMLInputElement | null) => {
+      const file = input?.files?.[0];
+      if (!file || disabled || phase === "processing") return;
 
-  function openNativeCamera() {
-    fileInputRef.current?.click();
-  }
+      try {
+        await runOcr(file);
+      } finally {
+        if (input) input.value = "";
+      }
+    },
+    [disabled, phase, runOcr]
+  );
 
   async function openLiveCamera() {
-    if (disabled || cameraStarting) return;
+    if (disabled || cameraStarting || phase === "processing") return;
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      openNativeCamera();
+      reportError("Câmera ao vivo não suportada neste navegador. Use tirar foto ou galeria.");
       return;
     }
 
     setCameraStarting(true);
     setCameraError(null);
+    onError?.("");
 
     try {
       const stream = await requestCameraStream();
@@ -165,22 +190,12 @@ export function PlateScanner({
       setCameraStream(stream);
       setPhase("camera");
     } catch {
-      openNativeCamera();
+      reportError(
+        "Não foi possível abrir a câmera. Verifique a permissão do navegador ou use tirar foto / galeria."
+      );
     } finally {
       setCameraStarting(false);
     }
-  }
-
-  async function openCamera() {
-    if (disabled) return;
-
-    // No celular, a câmera nativa do sistema é mais confiável que preview no navegador.
-    if (isTouchDevice()) {
-      openNativeCamera();
-      return;
-    }
-
-    await openLiveCamera();
   }
 
   function closeCamera() {
@@ -192,7 +207,7 @@ export function PlateScanner({
   async function captureFromCamera() {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) {
-      setCameraError("Aguarde a câmera carregar ou use a galeria.");
+      setCameraError("Aguarde a câmera carregar ou use galeria.");
       return;
     }
 
@@ -239,12 +254,6 @@ export function PlateScanner({
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
             <div className="h-16 w-full max-w-xs rounded-lg border-2 border-dashed border-white/80 bg-black/20" />
           </div>
-          {cameraStarting && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-white">
-              <Loader2 className="mr-2 h-6 w-6 animate-spin" />
-              Abrindo câmera…
-            </div>
-          )}
         </div>
 
         {cameraError && (
@@ -253,22 +262,20 @@ export function PlateScanner({
           </p>
         )}
 
-        <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="space-y-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <Button
             type="button"
             className="h-14 w-full text-base"
-            disabled={cameraStarting}
             onClick={() => void captureFromCamera()}
           >
             Capturar placa
           </Button>
-          <button
-            type="button"
-            className="mt-3 w-full text-center text-sm text-white/80 underline touch-manipulation"
-            onClick={openNativeCamera}
+          <label
+            htmlFor={galleryInputId}
+            className="block w-full cursor-pointer text-center text-sm text-white/80 underline touch-manipulation"
           >
             Ou escolher da galeria
-          </button>
+          </label>
         </div>
       </div>
     ) : null;
@@ -276,50 +283,61 @@ export function PlateScanner({
   return (
     <>
       <input
-        id={inputId}
-        ref={fileInputRef}
+        id={cameraInputId}
+        ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
-        className="sr-only"
-        disabled={busy}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          void handleFile(file);
-          e.target.value = "";
-        }}
+        className="hidden"
+        tabIndex={-1}
+        onChange={() => void handleFileInput(cameraInputRef.current)}
+      />
+      <input
+        id={galleryInputId}
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        tabIndex={-1}
+        onChange={() => void handleFileInput(galleryInputRef.current)}
       />
 
-      <div className={cn("space-y-2", className)}>
-        <Button
-          type="button"
-          variant="secondary"
-          className="h-12 w-full gap-2 text-base touch-manipulation sm:h-11"
-          disabled={busy}
-          onClick={() => void openCamera()}
-        >
-          {phase === "processing" ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Lendo placa… {progress > 0 ? `${progress}%` : ""}
-            </>
-          ) : cameraStarting ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Abrindo câmera…
-            </>
-          ) : (
-            <>
-              <Camera className="h-5 w-5" />
-              Fotografar placa
-            </>
-          )}
-        </Button>
+      <div className={cn("relative space-y-2", className)}>
+        {busy ? (
+          <div className={cn(actionClassName, "pointer-events-none opacity-60")}>
+            <Loader2 className="h-5 w-5 animate-spin" />
+            {phase === "processing"
+              ? statusMessage ?? `Lendo placa… ${progress > 0 ? `${progress}%` : ""}`
+              : "Abrindo câmera…"}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label htmlFor={cameraInputId} className={cn(actionClassName, "cursor-pointer")}>
+              <Camera className="h-5 w-5 shrink-0" />
+              Tirar foto
+            </label>
+            <label htmlFor={galleryInputId} className={cn(actionClassName, "cursor-pointer")}>
+              <ImageIcon className="h-5 w-5 shrink-0" />
+              Galeria
+            </label>
+          </div>
+        )}
+
+        {!busy && (
+          <button
+            type="button"
+            className={cn(actionClassName, "cursor-pointer bg-white ring-1 ring-slate-200")}
+            onClick={() => void openLiveCamera()}
+          >
+            <Video className="h-5 w-5 shrink-0" />
+            Câmera ao vivo
+          </button>
+        )}
 
         <p className="text-center text-xs text-slate-500 sm:text-left">
           {touchDevice
-            ? "Enquadre só a placa na foto. Use flash se estiver escuro."
-            : "Aponte para a placa com boa luz. Você pode corrigir antes de buscar."}
+            ? "Use tirar foto ou galeria. Enquadre só a placa com boa luz."
+            : "Escolha uma foto ou use a câmera ao vivo no computador."}
         </p>
 
         {previewUrl && phase === "processing" && (

@@ -1,4 +1,7 @@
 import { formatPlate } from "@/lib/utils";
+import { loadImageBitmap } from "@/lib/plate-image";
+
+const OCR_TIMEOUT_MS = 90_000;
 
 /** Placa Mercosul (ABC1D23) ou antiga (ABC1234) */
 const MERCOSUL_RE = /^[A-Z]{3}\d[A-Z0-9]\d{2}$/;
@@ -185,7 +188,7 @@ function drawRegion(
 
 /** Gera recortes da foto onde a placa costuma aparecer (foto vertical no celular). */
 export async function buildOcrImageVariants(file: Blob): Promise<Blob[]> {
-  const bitmap = await createImageBitmap(file);
+  const bitmap = await loadImageBitmap(file);
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) {
@@ -212,54 +215,86 @@ export async function buildOcrImageVariants(file: Blob): Promise<Blob[]> {
 
 const PSM_MODES = ["SPARSE_TEXT", "SINGLE_BLOCK", "AUTO", "SINGLE_LINE"] as const;
 
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 /** Roda OCR em vários recortes e modos até encontrar uma placa válida. */
 export async function recognizePlateFromImage(
   file: Blob,
   onProgress?: (pct: number) => void
 ): Promise<string | null> {
-  const Tesseract = (await import("tesseract.js")).default;
-  const variants = await buildOcrImageVariants(file);
-  const worker = await Tesseract.createWorker("eng", 1, {
-    logger: (m) => {
-      if (m.status === "recognizing text" && typeof m.progress === "number") {
-        onProgress?.(Math.round(m.progress * 100));
-      }
-    },
-  });
+  onProgress?.(1);
 
-  await worker.setParameters({
-    tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-  });
+  const run = async (): Promise<string | null> => {
+    const Tesseract = (await import("tesseract.js")).default;
+    onProgress?.(5);
 
-  let best: string | null = null;
+    const variants = await buildOcrImageVariants(file);
+    onProgress?.(10);
 
-  try {
-    const total = variants.length * PSM_MODES.length;
-    let step = 0;
-
-    for (const variant of variants) {
-      for (const psm of PSM_MODES) {
-        step += 1;
-        onProgress?.(Math.min(99, Math.round((step / total) * 100)));
-
-        await worker.setParameters({
-          tessedit_pageseg_mode: Tesseract.PSM[psm],
-        });
-        const { data } = await worker.recognize(variant);
-        const found = extractPlateFromText(data.text);
-        if (found) {
-          best = found;
-          break;
+    const worker = await Tesseract.createWorker("eng", 1, {
+      logger: (m) => {
+        if (m.status === "loading tesseract core" || m.status === "initializing tesseract") {
+          onProgress?.(12);
         }
-      }
-      if (best) break;
-    }
-  } finally {
-    await worker.terminate();
-  }
+        if (m.status === "recognizing text" && typeof m.progress === "number") {
+          onProgress?.(Math.max(15, Math.round(m.progress * 100)));
+        }
+      },
+    });
 
-  onProgress?.(100);
-  return best;
+    await worker.setParameters({
+      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    });
+
+    let best: string | null = null;
+
+    try {
+      const total = variants.length * PSM_MODES.length;
+      let step = 0;
+
+      for (const variant of variants) {
+        for (const psm of PSM_MODES) {
+          step += 1;
+          onProgress?.(Math.min(99, 10 + Math.round((step / total) * 85)));
+
+          await worker.setParameters({
+            tessedit_pageseg_mode: Tesseract.PSM[psm],
+          });
+          const { data } = await worker.recognize(variant);
+          const found = extractPlateFromText(data.text);
+          if (found) {
+            best = found;
+            break;
+          }
+        }
+        if (best) break;
+      }
+    } finally {
+      await worker.terminate();
+    }
+
+    onProgress?.(100);
+    return best;
+  };
+
+  return withTimeout(
+    run(),
+    OCR_TIMEOUT_MS,
+    "O leitor de placa demorou demais. Tente outra foto ou digite a placa."
+  );
 }
 
 /** Gera variantes comuns de confusão OCR para busca no banco. */

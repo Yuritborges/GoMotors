@@ -420,7 +420,6 @@ export default function NovaOrdemPage() {
           </div>
 
           <PlateScanner
-            disabled={plateLoading}
             onPlateDetected={(plate) => {
               setPlateOcrError("");
               setPlateQuery(plate);
