@@ -23,6 +23,10 @@ import {
   type WorkflowTaskState,
 } from "@/lib/order-workflow";
 import { PlateScanner } from "@/components/vehicles/plate-scanner";
+import {
+  defaultRetroactiveEntryValue,
+  toDatetimeLocalValue,
+} from "@/lib/order-entry-date";
 import Link from "next/link";
 
 const INITIAL_WORKFLOW: Record<WorkflowTaskKey, WorkflowTaskState> = {
@@ -84,6 +88,8 @@ export default function NovaOrdemPage() {
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [discount, setDiscount] = useState("0");
   const [paymentMethod, setPaymentMethod] = useState("PAGAR_DEPOIS");
+  const [retroactive, setRetroactive] = useState(false);
+  const [entryAtLocal, setEntryAtLocal] = useState(defaultRetroactiveEntryValue);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [plateQuery, setPlateQuery] = useState("");
@@ -364,6 +370,7 @@ export default function NovaOrdemPage() {
         discount: Number(discount || 0),
         paymentMethod,
         notes,
+        ...(retroactive ? { entryAt: new Date(entryAtLocal).toISOString() } : {}),
       }),
     });
     const order = await res.json();
@@ -605,6 +612,50 @@ export default function NovaOrdemPage() {
             <CardTitle className="text-base sm:text-lg">Pagamento</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <label className="flex cursor-pointer items-start gap-3 touch-manipulation">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-slate-300"
+                  checked={retroactive}
+                  onChange={(e) => {
+                    setRetroactive(e.target.checked);
+                    if (e.target.checked && !entryAtLocal) {
+                      setEntryAtLocal(defaultRetroactiveEntryValue());
+                    }
+                  }}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-slate-900">
+                    Lançamento retroativo
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    Esqueceu de registrar ontem? Informe a data/hora real do serviço para
+                    relatórios e financeiro.
+                  </span>
+                </span>
+              </label>
+
+              {retroactive && (
+                <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+                  <Field>
+                    <Label>Data e hora do serviço</Label>
+                    <Input
+                      type="datetime-local"
+                      value={entryAtLocal}
+                      max={toDatetimeLocalValue(new Date())}
+                      onChange={(e) => setEntryAtLocal(e.target.value)}
+                      className="text-base"
+                    />
+                  </Field>
+                  <p className="text-xs text-amber-800">
+                    A ordem será salva como <strong>já entregue</strong> na data escolhida e não
+                    entra na fila de hoje.
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-2 sm:hidden">
               {ORDER_PAYMENT_METHODS.map((key) => (
                 <button

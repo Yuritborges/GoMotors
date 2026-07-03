@@ -10,6 +10,10 @@ import { endOfDay, startOfDay } from "@/lib/utils";
 import type { WorkflowTaskKey } from "@/lib/order-workflow";
 import { hasSelectedWashService, BLOCKING_ORDER_STATUSES } from "@/lib/order-workflow";
 import { paymentStatusForMethod } from "@/lib/payments";
+import {
+  OrderEntryDateError,
+  parseOrderEntryAt,
+} from "@/lib/order-entry-date";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -48,6 +52,18 @@ function isWorkflowPayload(body: Record<string, unknown>) {
 export async function POST(request: Request) {
   const body = await request.json();
 
+  let entryAt: Date;
+  let retroactive: boolean;
+  try {
+    const parsed = parseOrderEntryAt(body.entryAt);
+    entryAt = parsed.entryAt;
+    retroactive = parsed.retroactive;
+  } catch (err) {
+    const message =
+      err instanceof OrderEntryDateError ? err.message : "Data/hora inválida.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
   const vehicle = await prisma.vehicle.findUnique({
     where: { id: body.vehicleId },
   });
@@ -56,22 +72,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
   }
 
-  const blockingToday = await prisma.serviceOrder.findFirst({
-    where: {
-      vehicleId: vehicle.id,
-      entryAt: { gte: startOfDay(), lte: endOfDay() },
-      status: { in: [...BLOCKING_ORDER_STATUSES] },
-    },
-  });
-
-  if (blockingToday) {
-    return NextResponse.json(
-      {
-        error:
-          "Este veículo já está na fila (aguardando ou em lavagem). Finalize ou avance no painel antes de abrir nova ordem.",
+  if (!retroactive) {
+    const blockingToday = await prisma.serviceOrder.findFirst({
+      where: {
+        vehicleId: vehicle.id,
+        entryAt: { gte: startOfDay(), lte: endOfDay() },
+        status: { in: [...BLOCKING_ORDER_STATUSES] },
       },
-      { status: 409 }
-    );
+    });
+
+    if (blockingToday) {
+      return NextResponse.json(
+        {
+          error:
+            "Este veículo já está na fila (aguardando ou em lavagem). Finalize ou avance no painel antes de abrir nova ordem.",
+        },
+        { status: 409 }
+      );
+    }
   }
 
   let items: OrderItemInput[] = [];
@@ -153,18 +171,25 @@ export async function POST(request: Request) {
   const paymentMethod = body.paymentMethod ?? "PAGAR_DEPOIS";
   const paymentStatus = paymentStatusForMethod(paymentMethod);
 
+  const auditNote = retroactive
+    ? `Lançamento retroativo (${entryAt.toLocaleString("pt-BR")})`
+    : null;
+  const notes = [body.notes?.trim(), auditNote].filter(Boolean).join(" · ") || null;
+
   const order = await prisma.serviceOrder.create({
     data: {
       clientId: body.clientId,
       vehicleId: body.vehicleId,
       employeeId: orderEmployeeId,
-      status: "AGUARDANDO",
+      status: retroactive ? "ENTREGUE" : "AGUARDANDO",
       subtotal,
       discount,
       total,
       paymentMethod,
       paymentStatus,
-      notes: body.notes || null,
+      notes,
+      entryAt,
+      deliveredAt: retroactive ? entryAt : undefined,
       items: {
         create: items.map((item) => ({
           serviceId: item.serviceId,
@@ -180,6 +205,7 @@ export async function POST(request: Request) {
                 method: paymentMethod,
                 amount: total,
                 type: "PAGAMENTO",
+                createdAt: entryAt,
               },
             }
           : undefined,
