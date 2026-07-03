@@ -45,6 +45,12 @@ type CashData = {
     prontos: number;
     entregues: number;
   };
+  laneBreakdown: {
+    lane: string;
+    label: string;
+    count: number;
+    fixed: boolean;
+  }[];
   hourlyRevenue: { hour: number; amount: number }[];
   pendingOrders: {
     id: string;
@@ -74,6 +80,17 @@ const METHOD_ICONS: Record<string, typeof Wallet> = {
   DEBITO: CreditCard,
   CREDITO: CreditCard,
 };
+
+const LANE_COLORS: Record<string, string> = {
+  AGUARDANDO: "bg-amber-400",
+  LAVAGEM: "bg-sky-500",
+  ASPIRACAO: "bg-indigo-500",
+  SECAGEM: "bg-cyan-500",
+  FINALIZACAO: "bg-purple-500",
+  PRONTO: "bg-emerald-500",
+};
+
+const DYNAMIC_LANE_COLOR = "bg-fuchsia-500";
 
 const METHOD_COLORS: Record<string, string> = {
   DINHEIRO: "from-emerald-500 to-emerald-600",
@@ -105,10 +122,9 @@ export default function CaixaPage() {
 
   const methodTotal = Object.values(data.byPaymentMethod).reduce((a, b) => a + b, 0);
   const maxHourly = Math.max(...data.hourlyRevenue.map((h) => h.amount), 1);
-  const inProgress =
-    data.statusBreakdown.aguardando +
-    data.statusBreakdown.emLavagem +
-    data.statusBreakdown.finalizacao;
+  const inProgress = (data.laneBreakdown ?? [])
+    .filter((l) => l.lane !== "PRONTO")
+    .reduce((sum, l) => sum + l.count, 0);
 
   return (
     <div className="space-y-6">
@@ -164,7 +180,7 @@ export default function CaixaPage() {
           icon={Wrench}
           label="Na fila agora"
           value={String(inProgress)}
-          sub={`${data.statusBreakdown.prontos} pronto(s)`}
+          sub={`${data.laneBreakdown.find((l) => l.lane === "PRONTO")?.count ?? 0} pronto(s)`}
           accent="text-orange-600 bg-orange-50"
         />
         <MetricCard
@@ -206,11 +222,19 @@ export default function CaixaPage() {
             <CardTitle>Status da fila hoje</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <StatusRow label="Aguardando" count={data.statusBreakdown.aguardando} color="bg-amber-400" />
-            <StatusRow label="Em lavagem" count={data.statusBreakdown.emLavagem} color="bg-sky-500" />
-            <StatusRow label="Finalização" count={data.statusBreakdown.finalizacao} color="bg-purple-500" />
-            <StatusRow label="Prontos" count={data.statusBreakdown.prontos} color="bg-emerald-500" />
-            <StatusRow label="Entregues" count={data.statusBreakdown.entregues} color="bg-slate-400" />
+            {(data.laneBreakdown ?? []).map((lane) => (
+              <StatusRow
+                key={lane.lane}
+                label={lane.label}
+                count={lane.count}
+                color={LANE_COLORS[lane.lane] ?? DYNAMIC_LANE_COLOR}
+              />
+            ))}
+            <StatusRow
+              label="Entregues"
+              count={data.statusBreakdown.entregues}
+              color="bg-slate-400"
+            />
           </CardContent>
         </Card>
       </div>

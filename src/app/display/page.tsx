@@ -38,6 +38,7 @@ const FIXED_COLUMN_COLORS: Record<string, string> = {
   LAVAGEM: "border-sky-500 bg-sky-500/10",
   ASPIRACAO: "border-indigo-500 bg-indigo-500/10",
   SECAGEM: "border-cyan-500 bg-cyan-500/10",
+  FINALIZACAO: "border-purple-500 bg-purple-500/10",
   PRONTO: "border-emerald-500 bg-emerald-500/10",
 };
 

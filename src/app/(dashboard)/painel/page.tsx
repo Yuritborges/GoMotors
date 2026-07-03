@@ -148,7 +148,7 @@ export default function PainelPage() {
   );
 
   const columns = useMemo(
-    () => buildOperationalColumns(boardOrders, { includeFinalizacao: true }),
+    () => buildOperationalColumns(boardOrders),
     [boardOrders]
   );
 

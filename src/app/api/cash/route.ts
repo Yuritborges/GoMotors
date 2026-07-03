@@ -4,6 +4,8 @@ import { endOfDay, startOfDay } from "@/lib/utils";
 import { handleAuthError, requireOwner } from "@/lib/auth";
 import { isDeferredPaymentMethod } from "@/lib/payments";
 import { excludeImportedOrdersWhere } from "@/lib/imported-orders";
+import { buildLaneBreakdown } from "@/lib/lane-breakdown";
+import type { DisplayOrderInput } from "@/lib/display-lanes-types";
 
 export async function GET(request: Request) {
   try {
@@ -61,6 +63,22 @@ export async function GET(request: Request) {
       entregues: orders.filter((o) => o.status === "ENTREGUE").length,
     };
 
+    const activeOrders: DisplayOrderInput[] = orders
+      .filter((o) => o.status !== "ENTREGUE" && o.status !== "CANCELADO")
+      .map((o) => ({
+        id: o.id,
+        status: o.status,
+        currentLane: o.currentLane,
+        client: { name: o.client.name },
+        vehicle: { plate: o.vehicle.plate },
+        items: o.items.map((i) => ({
+          serviceName: i.serviceName,
+          employee: null,
+        })),
+      }));
+
+    const laneBreakdown = buildLaneBreakdown(activeOrders);
+
     const hourlyMap = new Map<number, number>();
     for (const order of paidOrders) {
       const hour = order.entryAt.getHours();
@@ -88,6 +106,7 @@ export async function GET(request: Request) {
       totalExpenses,
       estimatedResult: totalSold - totalExpenses,
       statusBreakdown,
+      laneBreakdown,
       hourlyRevenue,
       pendingOrders: pendingOrders.map((o) => ({
         id: o.id,

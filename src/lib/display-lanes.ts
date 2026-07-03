@@ -22,11 +22,6 @@ export type {
 } from "./display-lanes-types";
 export { FIXED_DISPLAY_LANES } from "./display-lanes-constants";
 
-type BuildColumnsOptions = {
-  /** Telão não exibe coluna Finalização; painel sim. */
-  includeFinalizacao?: boolean;
-};
-
 function entryForLane(
   order: DisplayOrderInput,
   lane: string
@@ -50,20 +45,15 @@ function entryForLane(
 }
 
 /** Monta colunas operacionais — uma OS aparece em uma única etapa por vez. */
-export function buildOperationalColumns(
-  orders: DisplayOrderInput[],
-  options: BuildColumnsOptions = {}
-): DisplayColumn[] {
-  const { includeFinalizacao = false } = options;
-
+export function buildOperationalColumns(orders: DisplayOrderInput[]): DisplayColumn[] {
   const fixed: Record<FixedDisplayLaneKey, DisplayLaneEntry[]> = {
     AGUARDANDO: [],
     LAVAGEM: [],
     ASPIRACAO: [],
     SECAGEM: [],
+    FINALIZACAO: [],
     PRONTO: [],
   };
-  const finalizacao: DisplayLaneEntry[] = [];
   const dynamic = new Map<string, { label: string; entries: DisplayLaneEntry[] }>();
 
   let queuePosition = 0;
@@ -96,7 +86,7 @@ export function buildOperationalColumns(
     }
 
     if (lane === "FINALIZACAO") {
-      finalizacao.push({
+      fixed.FINALIZACAO.push({
         orderId: order.id,
         plate: order.vehicle.plate,
         clientName: order.client.name.split(" ")[0],
@@ -125,7 +115,7 @@ export function buildOperationalColumns(
   const columns: DisplayColumn[] = [];
 
   for (const { key, label } of FIXED_DISPLAY_LANES) {
-    if (key === "PRONTO") continue;
+    if (key === "FINALIZACAO" || key === "PRONTO") continue;
     columns.push({ lane: key, label, fixed: true, entries: fixed[key] });
   }
 
@@ -137,14 +127,12 @@ export function buildOperationalColumns(
     columns.push({ lane, label, fixed: false, entries });
   }
 
-  if (includeFinalizacao) {
-    columns.push({
-      lane: "FINALIZACAO",
-      label: "Finalização",
-      fixed: true,
-      entries: finalizacao,
-    });
-  }
+  columns.push({
+    lane: "FINALIZACAO",
+    label: "Finalização",
+    fixed: true,
+    entries: fixed.FINALIZACAO,
+  });
 
   columns.push({
     lane: "PRONTO",
@@ -161,9 +149,9 @@ function getDynamicLabelFromLane(lane: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-/** Telão: 5 fixas + extras dinâmicos (sem Finalização). */
+/** Telão e painel: fixas + extras dinâmicos + Finalização fixa. */
 export function buildDisplayColumns(orders: DisplayOrderInput[]): DisplayColumn[] {
-  return buildOperationalColumns(orders, { includeFinalizacao: false });
+  return buildOperationalColumns(orders);
 }
 
 export function displayLaneStats(columns: DisplayColumn[]) {

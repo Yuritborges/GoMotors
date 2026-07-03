@@ -3,6 +3,7 @@ export type FixedDisplayLaneKey =
   | "LAVAGEM"
   | "ASPIRACAO"
   | "SECAGEM"
+  | "FINALIZACAO"
   | "PRONTO";
 
 export type DisplayLaneEntry = {
