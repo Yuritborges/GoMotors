@@ -5,10 +5,12 @@ import { handleAuthError, requireAuth } from "@/lib/auth";
 type Params = { params: Promise<{ id: string }> };
 
 /** Marca a OS na conta mensal do cliente — permanece pendente até o fechamento. */
-export async function POST(_request: Request, { params }: Params) {
+export async function POST(request: Request, { params }: Params) {
   try {
     await requireAuth();
     const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    const deliver = body?.deliver === true;
 
     const existing = await prisma.serviceOrder.findUnique({
       where: { id },
@@ -23,9 +25,18 @@ export async function POST(_request: Request, { params }: Params) {
       return NextResponse.json({ error: "Esta ordem já foi paga." }, { status: 400 });
     }
 
-    if (existing.paymentMethod === "FECHAMENTO_MENSAL") {
+    const alreadyMonthly = existing.paymentMethod === "FECHAMENTO_MENSAL";
+
+    if (alreadyMonthly && !deliver) {
       return NextResponse.json(
         { error: "Esta ordem já está lançada na mensalidade." },
+        { status: 400 }
+      );
+    }
+
+    if (deliver && existing.status !== "PRONTO") {
+      return NextResponse.json(
+        { error: "Só é possível liberar veículos na coluna Pronto." },
         { status: 400 }
       );
     }
@@ -35,9 +46,19 @@ export async function POST(_request: Request, { params }: Params) {
       data: {
         paymentMethod: "FECHAMENTO_MENSAL",
         paymentStatus: "PENDENTE",
-        notes: existing.notes
-          ? `${existing.notes}\n[Lançado na mensalidade]`
-          : "[Lançado na mensalidade]",
+        notes:
+          !alreadyMonthly && !existing.notes?.includes("[Lançado na mensalidade]")
+            ? existing.notes
+              ? `${existing.notes}\n[Lançado na mensalidade]`
+              : "[Lançado na mensalidade]"
+            : existing.notes,
+        ...(deliver
+          ? {
+              status: "ENTREGUE",
+              deliveredAt: new Date(),
+              currentLane: "PRONTO",
+            }
+          : {}),
       },
       include: {
         client: true,

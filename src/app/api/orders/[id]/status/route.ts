@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ORDER_STATUS_FLOW } from "@/lib/constants";
 import { handleAuthError, requireAuth } from "@/lib/auth";
+import { canDeliverWithPendingPayment } from "@/lib/payments";
 import {
   getNextLane,
   laneToStatus,
@@ -51,7 +52,11 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Status inválido" }, { status: 400 });
     }
 
-    if (status === "ENTREGUE" && existing.paymentStatus === "PENDENTE") {
+    if (
+      status === "ENTREGUE" &&
+      existing.paymentStatus === "PENDENTE" &&
+      !canDeliverWithPendingPayment(existing.paymentMethod)
+    ) {
       return NextResponse.json(
         { error: "Receba o pagamento antes de liberar o veículo." },
         { status: 400 }

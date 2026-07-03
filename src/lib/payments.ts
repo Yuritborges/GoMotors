@@ -33,3 +33,8 @@ export function isSettlementPaymentMethod(method: string): boolean {
 export function paymentStatusForMethod(method: string): "PAGO" | "PENDENTE" {
   return isDeferredPaymentMethod(method) ? "PENDENTE" : "PAGO";
 }
+
+/** Mensalidade pendente pode liberar o carro; o recebimento fica para o fechamento. */
+export function canDeliverWithPendingPayment(paymentMethod: string): boolean {
+  return paymentMethod === "FECHAMENTO_MENSAL";
+}

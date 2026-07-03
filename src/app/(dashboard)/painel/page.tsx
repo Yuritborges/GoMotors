@@ -75,6 +75,22 @@ export default function PainelPage() {
     await loadOrders();
   }
 
+  async function launchMonthlyAndDeliver(orderId: string) {
+    const res = await fetch(`/api/orders/${orderId}/launch-monthly`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deliver: true }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error ?? "Erro ao lançar na mensalidade.");
+      return;
+    }
+
+    await loadOrders();
+  }
+
   async function deliverOrder(orderId: string) {
     const res = await fetch(`/api/orders/${orderId}/status`, {
       method: "PATCH",
@@ -287,6 +303,9 @@ export default function PainelPage() {
                                       Liberar veículo
                                       <ChevronRight className="h-4 w-4" />
                                     </Button>
+                                    <p className="text-center text-[10px] text-violet-700">
+                                      Mensalidade continua pendente até o fechamento.
+                                    </p>
                                     <Button
                                       className="w-full bg-violet-600 font-semibold text-white hover:bg-violet-700"
                                       size="sm"
@@ -296,13 +315,23 @@ export default function PainelPage() {
                                     </Button>
                                   </>
                                 ) : (
-                                  <Button
-                                    className="w-full bg-amber-600 font-semibold text-white hover:bg-amber-700"
-                                    size="sm"
-                                    onClick={() => setPayOrder(order)}
-                                  >
-                                    Receber pagamento
-                                  </Button>
+                                  <>
+                                    <Button
+                                      className="w-full bg-amber-600 font-semibold text-white hover:bg-amber-700"
+                                      size="sm"
+                                      onClick={() => setPayOrder(order)}
+                                    >
+                                      Receber pagamento
+                                    </Button>
+                                    <Button
+                                      className="w-full gap-2 bg-violet-600 font-semibold text-white hover:bg-violet-700"
+                                      size="sm"
+                                      onClick={() => void launchMonthlyAndDeliver(order.id)}
+                                    >
+                                      Lançar na mensalidade e liberar
+                                      <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                  </>
                                 )
                               ) : (
                                 <Button
