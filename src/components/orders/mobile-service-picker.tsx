@@ -19,12 +19,6 @@ type Service = {
 
 type Employee = { id: string; name: string };
 
-export type ServicePickerState = {
-  workflow: Record<WorkflowTaskKey, WorkflowTaskState>;
-  extras: Record<string, ExtraServiceState>;
-  showMoreOptions: boolean;
-};
-
 type MobileServicePickerProps = {
   services: Service[];
   employees: Employee[];
@@ -53,7 +47,19 @@ function EmployeePills({
   onSelect: (id: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-3 gap-2 pt-2">
+    <div className="grid grid-cols-3 gap-2">
+      <button
+        type="button"
+        onClick={() => onSelect("")}
+        className={cn(
+          "min-h-[44px] rounded-xl border px-2 py-2.5 text-sm font-semibold touch-manipulation",
+          !selectedId
+            ? "border-slate-400 bg-slate-100 text-slate-600"
+            : "border-slate-200 bg-white text-slate-400"
+        )}
+      >
+        —
+      </button>
       {employees.map((emp) => (
         <button
           key={emp.id}
@@ -69,6 +75,44 @@ function EmployeePills({
           {emp.name}
         </button>
       ))}
+    </div>
+  );
+}
+
+function WorkflowTaskCard({
+  label,
+  employeeId,
+  employees,
+  onSelect,
+}: {
+  label: string;
+  employeeId: string | null;
+  employees: Employee[];
+  onSelect: (id: string) => void;
+}) {
+  const assigned = employees.find((e) => e.id === employeeId)?.name;
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border bg-white p-4 transition-colors",
+        employeeId ? "border-sky-300 ring-1 ring-sky-100" : "border-slate-200"
+      )}
+    >
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-base font-bold uppercase tracking-wide text-slate-900">{label}</p>
+        {assigned && (
+          <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-semibold text-sky-800">
+            {assigned}
+          </span>
+        )}
+      </div>
+      <p className="mb-2 text-xs text-slate-500">Quem vai executar?</p>
+      <EmployeePills
+        employees={employees}
+        selectedId={employeeId}
+        onSelect={(id) => onSelect(id || "")}
+      />
     </div>
   );
 }
@@ -116,11 +160,13 @@ function ServiceRow({
       {state.selected && (
         <div className="border-t border-slate-100 px-4 pb-4">
           <p className="pt-2 text-xs text-slate-500">Quem vai executar?</p>
-          <EmployeePills
-            employees={employees}
-            selectedId={state.employeeId}
-            onSelect={onSelectEmployee}
-          />
+          <div className="pt-2">
+            <EmployeePills
+              employees={employees}
+              selectedId={state.employeeId}
+              onSelect={onSelectEmployee}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -141,18 +187,10 @@ export function MobileServicePicker({
   const washServices = services.filter((s) => isLavagemCatalogService(s.name));
   const otherServices = services.filter((s) => !isLavagemCatalogService(s.name));
 
-  function toggleWorkflowRow(key: WorkflowTaskKey) {
-    const current = workflow[key];
-    onWorkflowChange({
-      ...workflow,
-      [key]: { ...current, open: !current.open },
-    });
-  }
-
   function setWorkflowEmployee(key: WorkflowTaskKey, employeeId: string) {
     onWorkflowChange({
       ...workflow,
-      [key]: { employeeId, open: true },
+      [key]: { employeeId: employeeId || null, open: true },
     });
   }
 
@@ -174,11 +212,13 @@ export function MobileServicePicker({
   }
 
   function setExtraEmployee(serviceId: string, employeeId: string) {
-    const current = extras[serviceId] ?? {
-      selected: true,
-      employeeId: null,
-      open: true,
-    };
+    if (!employeeId) {
+      onExtrasChange({
+        ...extras,
+        [serviceId]: { selected: true, employeeId: null, open: true },
+      });
+      return;
+    }
     onExtrasChange({
       ...extras,
       [serviceId]: { selected: true, employeeId, open: true },
@@ -189,72 +229,30 @@ export function MobileServicePicker({
     employees.find((e) => e.id === id)?.name ?? null;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Equipe (lavagem · aspiração · secagem)
-        </p>
-        <div className="space-y-3">
-          {PRIMARY_WORKFLOW_TASKS.map(({ key, label }) => {
-            const task = workflow[key];
-            const assigned = employeeName(task.employeeId);
-
-            return (
-              <div
-                key={key}
-                className={cn(
-                  "rounded-xl border bg-white transition-colors",
-                  task.employeeId ? "border-sky-300 ring-1 ring-sky-100" : "border-slate-200"
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => toggleWorkflowRow(key)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left touch-manipulation"
-                >
-                  <div className="min-w-0">
-                    <p className="text-base font-bold uppercase tracking-wide text-slate-900">
-                      {label}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {assigned
-                        ? `Responsável: ${assigned}`
-                        : "Toque e escolha o funcionário"}
-                    </p>
-                  </div>
-                  {task.open ? (
-                    <ChevronUp className="h-5 w-5 shrink-0 text-slate-400" />
-                  ) : (
-                    <ChevronDown className="h-5 w-5 shrink-0 text-slate-400" />
-                  )}
-                </button>
-
-                {task.open && (
-                  <div className="border-t border-slate-100 px-4 pb-4">
-                    <EmployeePills
-                      employees={employees}
-                      selectedId={task.employeeId}
-                      onSelect={(id) => setWorkflowEmployee(key, id)}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+    <div className="space-y-5">
+      <div className="space-y-3">
+        {PRIMARY_WORKFLOW_TASKS.map(({ key, label }) => (
+          <WorkflowTaskCard
+            key={key}
+            label={label}
+            employeeId={workflow[key].employeeId}
+            employees={employees}
+            onSelect={(id) => setWorkflowEmployee(key, id)}
+          />
+        ))}
       </div>
 
-      <div>
+      <div className="border-t border-slate-100 pt-4">
         <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-sky-700">
           Tipo de lavagem *
         </p>
         <p className="mb-3 text-xs text-slate-500">
-          Obrigatório — selecione o serviço e o responsável para calcular o valor.
+          Selecione o serviço e o responsável para calcular o valor.
         </p>
         <div className="space-y-2">
           {washServices.length === 0 ? (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Nenhum serviço de lavagem cadastrado. Cadastre em Serviços.
+              Nenhum serviço de lavagem cadastrado.
             </p>
           ) : (
             washServices.map((service) => {
@@ -285,7 +283,7 @@ export function MobileServicePicker({
           <button
             type="button"
             onClick={() => onShowMoreOptionsChange(!showMoreOptions)}
-            className="flex w-full items-center justify-between rounded-xl border border-dashed border-slate-300 bg-slate-50/50 px-4 py-3.5 text-left touch-manipulation active:bg-slate-50"
+            className="flex w-full items-center justify-between rounded-xl border border-dashed border-slate-300 bg-slate-50/50 px-4 py-3.5 text-left touch-manipulation"
           >
             <span className="text-sm font-semibold text-slate-700">
               {showMoreOptions ? "− Ocultar serviços extras" : "+ Serviços extras"}

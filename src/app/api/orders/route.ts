@@ -8,7 +8,7 @@ import {
 } from "@/lib/build-order-items";
 import { endOfDay, startOfDay } from "@/lib/utils";
 import type { WorkflowTaskKey } from "@/lib/order-workflow";
-import { hasSelectedWashService } from "@/lib/order-workflow";
+import { hasSelectedWashService, BLOCKING_ORDER_STATUSES } from "@/lib/order-workflow";
 import { paymentStatusForMethod } from "@/lib/payments";
 
 export async function GET(request: Request) {
@@ -54,6 +54,24 @@ export async function POST(request: Request) {
 
   if (!vehicle) {
     return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
+  }
+
+  const blockingToday = await prisma.serviceOrder.findFirst({
+    where: {
+      vehicleId: vehicle.id,
+      entryAt: { gte: startOfDay(), lte: endOfDay() },
+      status: { in: [...BLOCKING_ORDER_STATUSES] },
+    },
+  });
+
+  if (blockingToday) {
+    return NextResponse.json(
+      {
+        error:
+          "Este veículo já está na fila (aguardando ou em lavagem). Finalize ou avance no painel antes de abrir nova ordem.",
+      },
+      { status: 409 }
+    );
   }
 
   let items: OrderItemInput[] = [];

@@ -5,24 +5,32 @@ import Link from "next/link";
 import {
   Banknote,
   Car,
+  CheckCircle2,
   Clock,
   CreditCard,
   PiggyBank,
   RefreshCw,
   TrendingUp,
   Wallet,
+  Wrench,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
-import { ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/constants";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
+import {
+  ORDER_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_STATUS_LABELS,
+} from "@/lib/constants";
 import { usePolling } from "@/lib/use-polling";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
 
 type CashData = {
   totalSold: number;
   totalDiscounts: number;
   pendingAmount: number;
+  payLaterAmount: number;
   vehicleCount: number;
   paidCount: number;
   pendingPaymentCount: number;
@@ -30,12 +38,33 @@ type CashData = {
   byPaymentMethod: Record<string, number>;
   totalExpenses: number;
   estimatedResult: number;
+  statusBreakdown: {
+    aguardando: number;
+    emLavagem: number;
+    finalizacao: number;
+    prontos: number;
+    entregues: number;
+  };
+  hourlyRevenue: { hour: number; amount: number }[];
   pendingOrders: {
     id: string;
     total: number;
     status: string;
+    paymentMethod: string;
     plate: string;
     clientName: string;
+    entryAt: string;
+  }[];
+  todayOrders: {
+    id: string;
+    plate: string;
+    clientName: string;
+    total: number;
+    status: string;
+    paymentStatus: string;
+    paymentMethod: string;
+    services: string;
+    entryAt: string;
   }[];
 };
 
@@ -62,7 +91,7 @@ export default function CaixaPage() {
     if (res.ok) setData(await res.json());
   }, []);
 
-  usePolling(load, 30000);
+  usePolling(load, 20000);
 
   async function manualRefresh() {
     setRefreshing(true);
@@ -71,62 +100,129 @@ export default function CaixaPage() {
   }
 
   if (!data) {
-    return <p className="text-sm text-slate-500">Carregando fechamento...</p>;
+    return <p className="text-sm text-slate-500">Carregando caixa...</p>;
   }
 
   const methodTotal = Object.values(data.byPaymentMethod).reduce((a, b) => a + b, 0);
+  const maxHourly = Math.max(...data.hourlyRevenue.map((h) => h.amount), 1);
+  const inProgress =
+    data.statusBreakdown.aguardando +
+    data.statusBreakdown.emLavagem +
+    data.statusBreakdown.finalizacao;
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Caixa" description="Fechamento diário em tempo real">
-        <Button
-          variant="outline"
-          className="gap-2"
-          disabled={refreshing}
-          onClick={() => void manualRefresh()}
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          Atualizar
-        </Button>
+      <PageHeader title="Caixa" description="Fechamento e movimentação do dia">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Link href="/painel">
+            <Button variant="secondary" className="w-full gap-2 sm:w-auto">
+              <Wrench className="h-4 w-4" />
+              Painel operacional
+            </Button>
+          </Link>
+          <Button
+            variant="outline"
+            className="w-full gap-2 sm:w-auto"
+            disabled={refreshing}
+            onClick={() => void manualRefresh()}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            Atualizar
+          </Button>
+        </div>
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <MetricCard
           icon={TrendingUp}
-          label="Total recebido"
+          label="Recebido hoje"
           value={formatCurrency(data.totalSold)}
           accent="text-emerald-600 bg-emerald-50"
         />
         <MetricCard
-          icon={Car}
-          label="Veículos atendidos"
-          value={String(data.vehicleCount)}
-          sub={`${data.paidCount} pagos`}
-          accent="text-sky-600 bg-sky-50"
+          icon={Clock}
+          label="Pagar depois"
+          value={formatCurrency(data.payLaterAmount)}
+          sub={`${data.pendingPaymentCount} pendente(s)`}
+          accent="text-amber-600 bg-amber-50"
         />
         <MetricCard
           icon={PiggyBank}
-          label="Ticket médio"
-          value={formatCurrency(data.averageTicket)}
+          label="Lucro estimado"
+          value={formatCurrency(data.estimatedResult)}
+          sub={`Despesas ${formatCurrency(data.totalExpenses)}`}
           accent="text-violet-600 bg-violet-50"
         />
         <MetricCard
-          icon={Clock}
-          label="Pendente"
-          value={formatCurrency(data.pendingAmount)}
-          sub={`${data.pendingPaymentCount} ordem(ns)`}
-          accent="text-amber-600 bg-amber-50"
+          icon={Car}
+          label="Veículos"
+          value={String(data.vehicleCount)}
+          sub={`${data.paidCount} pagos · ticket ${formatCurrency(data.averageTicket)}`}
+          accent="text-sky-600 bg-sky-50"
+        />
+        <MetricCard
+          icon={Wrench}
+          label="Na fila agora"
+          value={String(inProgress)}
+          sub={`${data.statusBreakdown.prontos} pronto(s)`}
+          accent="text-orange-600 bg-orange-50"
+        />
+        <MetricCard
+          icon={CheckCircle2}
+          label="Entregues"
+          value={String(data.statusBreakdown.entregues)}
+          sub={`Descontos ${formatCurrency(data.totalDiscounts)}`}
+          accent="text-teal-600 bg-teal-50"
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
           <CardHeader>
-            <CardTitle>Formas de pagamento</CardTitle>
+            <CardTitle>Receita por hora (pagos)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.hourlyRevenue.length === 0 ? (
+              <p className="text-sm text-slate-500">Nenhum pagamento registrado hoje.</p>
+            ) : (
+              <div className="flex h-36 items-end gap-1.5">
+                {data.hourlyRevenue.map(({ hour, amount }) => (
+                  <div key={hour} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                    <div
+                      className="w-full rounded-t-md bg-gradient-to-t from-sky-600 to-sky-400 transition-all"
+                      style={{ height: `${Math.max((amount / maxHourly) * 100, 8)}%` }}
+                      title={formatCurrency(amount)}
+                    />
+                    <span className="text-[10px] text-slate-500">{hour}h</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Status da fila hoje</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <StatusRow label="Aguardando" count={data.statusBreakdown.aguardando} color="bg-amber-400" />
+            <StatusRow label="Em lavagem" count={data.statusBreakdown.emLavagem} color="bg-sky-500" />
+            <StatusRow label="Finalização" count={data.statusBreakdown.finalizacao} color="bg-purple-500" />
+            <StatusRow label="Prontos" count={data.statusBreakdown.prontos} color="bg-emerald-500" />
+            <StatusRow label="Entregues" count={data.statusBreakdown.entregues} color="bg-slate-400" />
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Formas de pagamento (recebido)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {Object.entries(data.byPaymentMethod).length === 0 ? (
-              <p className="text-sm text-slate-500">Nenhum pagamento registrado hoje.</p>
+              <p className="text-sm text-slate-500">Nenhum pagamento recebido.</p>
             ) : (
               Object.entries(data.byPaymentMethod).map(([method, amount]) => {
                 const Icon = METHOD_ICONS[method] ?? Wallet;
@@ -150,7 +246,6 @@ export default function CaixaPage() {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <p className="text-right text-xs text-slate-400">{pct.toFixed(0)}%</p>
                   </div>
                 );
               })
@@ -160,56 +255,110 @@ export default function CaixaPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Resumo operacional</CardTitle>
+            <CardTitle>Resumo financeiro</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <SummaryRow label="Descontos aplicados" value={formatCurrency(data.totalDiscounts)} />
+          <CardContent className="space-y-3 text-sm">
+            <SummaryRow label="Total recebido" value={formatCurrency(data.totalSold)} />
+            <SummaryRow label="A receber (pagar depois)" value={formatCurrency(data.pendingAmount)} />
+            <SummaryRow label="Descontos" value={formatCurrency(data.totalDiscounts)} />
             <SummaryRow label="Despesas do dia" value={formatCurrency(data.totalExpenses)} />
             <SummaryRow
-              label="Resultado estimado"
+              label="Lucro estimado"
               value={formatCurrency(data.estimatedResult)}
               highlight
             />
-            <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
-              Resultado = recebido − despesas. Valores pendentes não entram no total recebido.
-            </div>
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              Lucro = recebido − despesas. Valores &quot;pagar depois&quot; não entram até a baixa.
+            </p>
           </CardContent>
         </Card>
       </div>
 
       {data.pendingOrders.length > 0 && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Pagamentos pendentes</CardTitle>
+            <Link href="/painel">
+              <Button size="sm" className="bg-amber-600 hover:bg-amber-700">
+                Receber no painel
+              </Button>
+            </Link>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {data.pendingOrders.map((order) => (
                 <div
                   key={order.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3"
+                  className="rounded-xl border border-amber-200 bg-amber-50/60 p-4"
                 >
-                  <div>
-                    <p className="font-semibold">{order.plate}</p>
-                    <p className="text-sm text-slate-600">{order.clientName}</p>
-                    <p className="text-xs text-slate-500">
-                      {ORDER_STATUS_LABELS[order.status] ?? order.status}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold">{formatCurrency(order.total)}</span>
-                    <Link href="/painel">
-                      <Button size="sm" className="bg-amber-600 hover:bg-amber-700">
-                        Receber no painel
-                      </Button>
-                    </Link>
-                  </div>
+                  <p className="text-lg font-bold">{order.plate}</p>
+                  <p className="text-sm text-slate-600">{order.clientName}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {ORDER_STATUS_LABELS[order.status]} ·{" "}
+                    {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
+                  </p>
+                  <p className="mt-2 text-xl font-bold">{formatCurrency(order.total)}</p>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Movimentação do dia ({data.todayOrders.length})</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-slate-500">
+                <th className="pb-2 pr-4 font-medium">Hora</th>
+                <th className="pb-2 pr-4 font-medium">Placa</th>
+                <th className="pb-2 pr-4 font-medium">Cliente</th>
+                <th className="pb-2 pr-4 font-medium">Serviços</th>
+                <th className="pb-2 pr-4 font-medium">Status</th>
+                <th className="pb-2 pr-4 font-medium">Pagamento</th>
+                <th className="pb-2 font-medium">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.todayOrders.map((order) => (
+                <tr key={order.id} className="border-b border-slate-100">
+                  <td className="py-2.5 pr-4 whitespace-nowrap text-slate-500">
+                    {formatDateTime(order.entryAt).split(" ")[1]}
+                  </td>
+                  <td className="py-2.5 pr-4 font-semibold">{order.plate}</td>
+                  <td className="py-2.5 pr-4">{order.clientName}</td>
+                  <td className="max-w-[160px] truncate py-2.5 pr-4 text-slate-600">
+                    {order.services}
+                  </td>
+                  <td className="py-2.5 pr-4">
+                    <StatusBadge status={order.status} />
+                  </td>
+                  <td className="py-2.5 pr-4">
+                    <span
+                      className={
+                        order.paymentStatus === "PENDENTE"
+                          ? "text-amber-700"
+                          : "text-emerald-700"
+                      }
+                    >
+                      {PAYMENT_STATUS_LABELS[order.paymentStatus] ?? order.paymentStatus}
+                      {order.paymentStatus === "PAGO" &&
+                        ` · ${PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}`}
+                    </span>
+                  </td>
+                  <td className="py-2.5 font-semibold">{formatCurrency(order.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data.todayOrders.length === 0 && (
+            <p className="py-8 text-center text-sm text-slate-500">Nenhuma ordem hoje.</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -229,13 +378,13 @@ function MetricCard({
 }) {
   return (
     <Card>
-      <CardContent className="pt-5">
-        <div className={`mb-3 inline-flex rounded-xl p-2.5 ${accent}`}>
-          <Icon className="h-5 w-5" />
+      <CardContent className="pt-4">
+        <div className={`mb-2 inline-flex rounded-lg p-2 ${accent}`}>
+          <Icon className="h-4 w-4" />
         </div>
-        <p className="text-sm text-slate-500">{label}</p>
-        <p className="mt-1 text-xl font-bold sm:text-2xl">{value}</p>
-        {sub && <p className="mt-0.5 text-xs text-slate-400">{sub}</p>}
+        <p className="text-xs text-slate-500">{label}</p>
+        <p className="mt-0.5 text-lg font-bold leading-tight xl:text-xl">{value}</p>
+        {sub && <p className="mt-1 text-[10px] leading-snug text-slate-400">{sub}</p>}
       </CardContent>
     </Card>
   );
@@ -252,10 +401,30 @@ function SummaryRow({
 }) {
   return (
     <div
-      className={`flex justify-between text-sm ${highlight ? "rounded-xl bg-emerald-50 px-3 py-2 font-bold text-emerald-900" : ""}`}
+      className={`flex justify-between ${highlight ? "rounded-xl bg-emerald-50 px-3 py-2 font-bold text-emerald-900" : ""}`}
     >
       <span className={highlight ? "" : "text-slate-600"}>{label}</span>
       <span>{value}</span>
+    </div>
+  );
+}
+
+function StatusRow({
+  label,
+  count,
+  color,
+}: {
+  label: string;
+  count: number;
+  color: string;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+      <span className="flex items-center gap-2 text-sm">
+        <span className={`inline-block h-2.5 w-2.5 rounded-full ${color}`} />
+        {label}
+      </span>
+      <span className="font-bold">{count}</span>
     </div>
   );
 }

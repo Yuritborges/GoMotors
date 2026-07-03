@@ -36,13 +36,22 @@ type PlateLookup = {
   plate?: string;
   client?: { id: string; name: string; phone: string };
   vehicle?: { id: string; plate: string; model: string | null; vehicleType: string };
+  /** Só bloqueia se em andamento (aguardando/lavagem/finalização) */
   activeOrder?: {
     id: string;
     status: string;
     statusLabel: string;
     total: number;
     items: string[];
-  };
+  } | null;
+  /** Informativo — pronto para retirada, NÃO bloqueia nova OS */
+  readyOrder?: {
+    id: string;
+    status: string;
+    statusLabel: string;
+    total: number;
+    items: string[];
+  } | null;
 };
 
 type Client = {
@@ -448,18 +457,39 @@ export default function NovaOrdemPage() {
               {plateLookup.activeOrder ? (
                 <div className="mt-2 rounded-md bg-amber-100 px-3 py-2 text-amber-900">
                   <p className="font-medium">
-                    Já na fila hoje: {plateLookup.activeOrder.statusLabel}
+                    Em andamento na fila: {plateLookup.activeOrder.statusLabel}
                   </p>
                   <p className="text-xs">
                     {plateLookup.activeOrder.items.join(", ")} —{" "}
                     {formatCurrency(plateLookup.activeOrder.total)}
                   </p>
+                  <p className="mt-1 text-xs">Finalize no painel antes de abrir nova ordem.</p>
                   <Link
                     href="/painel"
                     className="mt-1 inline-block text-xs font-semibold underline"
                     onClick={(e) => e.stopPropagation()}
                   >
                     Ver no painel →
+                  </Link>
+                </div>
+              ) : plateLookup.readyOrder ? (
+                <div className="mt-2 rounded-md bg-sky-100 px-3 py-2 text-sky-900">
+                  <p className="font-medium">
+                    Último serviço hoje: {plateLookup.readyOrder.statusLabel}
+                  </p>
+                  <p className="text-xs">
+                    {plateLookup.readyOrder.items.join(", ")} —{" "}
+                    {formatCurrency(plateLookup.readyOrder.total)}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-sky-800">
+                    Pode registrar nova lavagem normalmente.
+                  </p>
+                  <Link
+                    href="/painel"
+                    className="mt-1 inline-block text-xs font-semibold underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Liberar / receber no painel →
                   </Link>
                 </div>
               ) : (
@@ -503,10 +533,10 @@ export default function NovaOrdemPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base sm:text-lg">Serviços e equipe</CardTitle>
-            {!selectedVehicle && (
-              <p className="text-sm text-slate-500">Busque a placa para calcular os preços.</p>
-            )}
+            <CardTitle className="text-base sm:text-lg">Equipe — Lavagem · Aspiração · Secagem</CardTitle>
+            <p className="text-sm text-slate-500">
+              Escolha o funcionário responsável por cada etapa.
+            </p>
           </CardHeader>
           <CardContent>
             <MobileServicePicker
