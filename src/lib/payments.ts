@@ -14,6 +14,18 @@ export function isDeferredPaymentMethod(method: string): boolean {
   return (DEFERRED_PAYMENT_METHODS as readonly string[]).includes(method);
 }
 
+/** Formas usadas na hora de receber (baixa) no painel. */
+export const SETTLEMENT_PAYMENT_METHODS = [
+  "PIX",
+  "DINHEIRO",
+  "DEBITO",
+  "CREDITO",
+] as const;
+
+export function isSettlementPaymentMethod(method: string): boolean {
+  return (SETTLEMENT_PAYMENT_METHODS as readonly string[]).includes(method);
+}
+
 export function paymentStatusForMethod(method: string): "PAGO" | "PENDENTE" {
   return isDeferredPaymentMethod(method) ? "PENDENTE" : "PAGO";
 }

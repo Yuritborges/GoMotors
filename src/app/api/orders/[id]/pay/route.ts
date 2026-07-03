@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleAuthError, requireAuth } from "@/lib/auth";
-import { isDeferredPaymentMethod } from "@/lib/payments";
+import { isSettlementPaymentMethod } from "@/lib/payments";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -12,7 +12,7 @@ export async function POST(request: Request, { params }: Params) {
     const body = await request.json();
     const paymentMethod = body.paymentMethod as string;
 
-    if (!paymentMethod || isDeferredPaymentMethod(paymentMethod)) {
+    if (!paymentMethod || !isSettlementPaymentMethod(paymentMethod)) {
       return NextResponse.json(
         { error: "Selecione uma forma de pagamento válida." },
         { status: 400 }

@@ -39,6 +39,7 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CREDITO: "Crédito",
   PENDENTE: "Pagar depois",
   PAGAR_DEPOIS: "Pagar depois",
+  FECHAMENTO_MENSAL: "Fechamento mensal",
 };
 
 export const PAYMENT_STATUS_LABELS: Record<string, string> = {

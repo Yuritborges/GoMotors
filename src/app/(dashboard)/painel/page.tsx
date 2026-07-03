@@ -21,7 +21,7 @@ type Order = {
   paymentStatus: string;
   paymentMethod: string;
   entryAt: string;
-  client: { name: string };
+  client: { id: string; name: string };
   vehicle: { plate: string };
   employee: { name: string } | null;
   items: { serviceName: string }[];
