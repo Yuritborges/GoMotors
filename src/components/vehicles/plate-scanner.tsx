@@ -14,14 +14,6 @@ type PlateScannerProps = {
 
 type ScanPhase = "idle" | "processing";
 
-function isTouchDevice(): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    window.matchMedia("(pointer: coarse)").matches ||
-    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-  );
-}
-
 const actionClassName =
   "inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-slate-100 text-base font-medium text-slate-900 transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 touch-manipulation active:scale-[0.99] sm:h-11 sm:text-sm";
 
@@ -35,15 +27,10 @@ export function PlateScanner({
   const cameraInputId = `plate-camera-${reactId}`;
   const galleryInputId = `plate-gallery-${reactId}`;
 
-  const [touchDevice, setTouchDevice] = useState(false);
   const [phase, setPhase] = useState<ScanPhase>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    setTouchDevice(isTouchDevice());
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -153,28 +140,36 @@ export function PlateScanner({
           <Loader2 className="h-5 w-5 animate-spin" />
           {statusMessage ?? "Lendo placa…"}
         </div>
-      ) : touchDevice ? (
-        <div className="grid grid-cols-2 gap-2">
-          <label htmlFor={cameraInputId} className={cn(actionClassName, "cursor-pointer")}>
-            <Camera className="h-5 w-5 shrink-0" />
-            Tirar foto
-          </label>
-          <label htmlFor={galleryInputId} className={cn(actionClassName, "cursor-pointer")}>
-            <ImageIcon className="h-5 w-5 shrink-0" />
-            Galeria
-          </label>
-        </div>
       ) : (
-        <label htmlFor={galleryInputId} className={cn(actionClassName, "cursor-pointer")}>
-          <ImageIcon className="h-5 w-5 shrink-0" />
-          Buscar foto na galeria
-        </label>
+        <>
+          {/* Celular / tablet — mesmo breakpoint da navegação inferior */}
+          <div className="grid grid-cols-2 gap-2 lg:hidden">
+            <label htmlFor={cameraInputId} className={cn(actionClassName, "cursor-pointer")}>
+              <Camera className="h-5 w-5 shrink-0" />
+              Tirar foto
+            </label>
+            <label htmlFor={galleryInputId} className={cn(actionClassName, "cursor-pointer")}>
+              <ImageIcon className="h-5 w-5 shrink-0" />
+              Galeria
+            </label>
+          </div>
+
+          {/* Desktop */}
+          <label
+            htmlFor={galleryInputId}
+            className={cn(actionClassName, "hidden cursor-pointer lg:inline-flex")}
+          >
+            <ImageIcon className="h-5 w-5 shrink-0" />
+            Buscar foto na galeria
+          </label>
+        </>
       )}
 
-      <p className="text-center text-xs text-slate-500 sm:text-left">
-        {touchDevice
-          ? "Enquadre só a placa na foto, com boa luz."
-          : "Selecione uma foto da placa salva no computador."}
+      <p className="text-center text-xs text-slate-500 lg:hidden">
+        Enquadre só a placa na foto, com boa luz.
+      </p>
+      <p className="hidden text-xs text-slate-500 lg:block">
+        Selecione uma foto da placa salva no computador.
       </p>
 
       {previewUrl && (
