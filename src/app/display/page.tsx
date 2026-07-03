@@ -3,19 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { usePolling } from "@/lib/use-polling";
+import { OrderServicesGrid } from "@/components/orders/order-services-grid";
+
+type DisplayOrder = {
+  id: string;
+  plate: string;
+  clientName: string;
+  items: { serviceName: string; employeeName: string | null }[];
+  position: number;
+};
 
 type DisplayData = {
   updatedAt: string;
   columns: {
     status: string;
     label: string;
-    orders: {
-      id: string;
-      plate: string;
-      clientName: string;
-      services: string;
-      position: number;
-    }[];
+    orders: DisplayOrder[];
   }[];
   stats: {
     aguardando: number;
@@ -134,20 +137,22 @@ export default function DisplayPage() {
                 col.orders.map((order) => (
                   <div
                     key={order.id}
-                    className="rounded-xl bg-zinc-900/80 px-3 py-4 text-center shadow-lg sm:px-4 sm:py-5"
+                    className="rounded-xl bg-zinc-900/80 px-3 py-4 text-left shadow-lg sm:px-4 sm:py-5"
                   >
                     {col.status === "AGUARDANDO" && (
-                      <p className="text-xs font-medium text-amber-400 sm:text-sm">
+                      <p className="text-center text-xs font-medium text-amber-400 sm:text-sm">
                         #{order.position} na fila
                       </p>
                     )}
-                    <p className="mt-1 text-2xl font-black tracking-widest sm:text-3xl">
+                    <p className="mt-1 text-center text-2xl font-black tracking-widest sm:text-3xl">
                       {order.plate}
                     </p>
-                    <p className="mt-1 text-base text-zinc-300 sm:text-lg">
+                    <p className="mt-1 text-center text-base text-zinc-300 sm:text-lg">
                       {order.clientName}
                     </p>
-                    <p className="mt-2 text-xs text-zinc-500">{order.services}</p>
+                    <div className="mt-3">
+                      <OrderServicesGrid items={order.items} compact dark />
+                    </div>
                   </div>
                 ))
               )}

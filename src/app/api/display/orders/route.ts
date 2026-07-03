@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { endOfDay, startOfDay } from "@/lib/utils";
 import { ORDER_STATUS_LABELS } from "@/lib/constants";
+import { excludeImportedOrdersWhere } from "@/lib/imported-orders";
 
 export async function GET() {
   const start = startOfDay(new Date());
@@ -11,11 +12,18 @@ export async function GET() {
     where: {
       entryAt: { gte: start, lte: end },
       status: { notIn: ["ENTREGUE", "CANCELADO"] },
+      ...excludeImportedOrdersWhere,
     },
     include: {
       client: { select: { name: true } },
       vehicle: { select: { plate: true } },
-      items: { select: { serviceName: true } },
+      items: {
+        select: {
+          serviceName: true,
+          employee: { select: { name: true } },
+        },
+        orderBy: { serviceName: "asc" },
+      },
     },
     orderBy: { entryAt: "asc" },
   });
@@ -33,7 +41,10 @@ export async function GET() {
           id: o.id,
           plate: o.vehicle.plate,
           clientName: o.client.name.split(" ")[0],
-          services: o.items.map((i) => i.serviceName).join(", "),
+          items: o.items.map((i) => ({
+            serviceName: i.serviceName,
+            employeeName: i.employee?.name ?? null,
+          })),
           position: index + 1,
         })),
     })),

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { PAYMENT_METHOD_LABELS, ORDER_STATUS_LABELS, VEHICLE_TYPE_LABELS } from "@/lib/constants";
 import { ReceiptPrintActions } from "./receipt-actions";
+import { ReceiptSuccessBanner } from "./receipt-success-banner";
+import { Suspense } from "react";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -32,6 +34,9 @@ export default async function ComprovantePage({ params }: Params) {
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
+      <Suspense fallback={null}>
+        <ReceiptSuccessBanner />
+      </Suspense>
       <ReceiptPrintActions
         orderId={order.id}
         clientPhone={order.client.phone}

@@ -359,26 +359,37 @@ export default function NovaOrdemPage() {
       }));
 
     setSaving(true);
-    const res = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        clientId,
-        vehicleId,
-        workflowTasks,
-        serviceItems,
-        discount: Number(discount || 0),
-        paymentMethod,
-        notes,
-        ...(retroactive ? { entryAt: new Date(entryAtLocal).toISOString() } : {}),
-      }),
-    });
-    const order = await res.json();
-    setSaving(false);
-    if (res.ok && order.id) {
-      router.push(`/ordens/${order.id}/comprovante`);
-    } else {
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId,
+          vehicleId,
+          workflowTasks,
+          serviceItems,
+          discount: Number(discount || 0),
+          paymentMethod,
+          notes,
+          ...(retroactive ? { entryAt: new Date(entryAtLocal).toISOString() } : {}),
+        }),
+      });
+      const order = await res.json();
+      if (res.ok && order.id) {
+        const plate =
+          selectedVehicle?.plate ??
+          plateLookup?.vehicle?.plate ??
+          plateQuery.toUpperCase();
+        window.location.assign(
+          `/ordens/${order.id}/comprovante?registered=1&plate=${encodeURIComponent(plate)}`
+        );
+        return;
+      }
       alert(order.error ?? "Erro ao registrar ordem.");
+    } catch {
+      alert("Erro de conexão ao registrar ordem. Verifique o painel antes de tentar de novo.");
+    } finally {
+      setSaving(false);
     }
   }
 

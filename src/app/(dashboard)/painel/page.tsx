@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ChevronRight, ExternalLink, Monitor } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { isOwner } from "@/lib/permissions";
@@ -15,6 +14,10 @@ import { Button } from "@/components/ui/button";
 import { StockAlertsBanner } from "@/components/stock-alerts-banner";
 import { PageHeader } from "@/components/layout/page-header";
 import { PaymentModal } from "@/components/orders/payment-modal";
+import {
+  OrderServicesGrid,
+  type OrderServiceLine,
+} from "@/components/orders/order-services-grid";
 
 type Order = {
   id: string;
@@ -26,11 +29,10 @@ type Order = {
   client: { id: string; name: string };
   vehicle: { plate: string };
   employee: { name: string } | null;
-  items: { serviceName: string }[];
+  items: { serviceName: string; employee: { name: string } | null }[];
 };
 
 export default function PainelPage() {
-  const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,7 +132,7 @@ export default function PainelPage() {
   function handlePaid(orderId: string) {
     setPayOrder(null);
     void loadOrders();
-    router.push(`/ordens/${orderId}/comprovante`);
+    window.location.assign(`/ordens/${orderId}/comprovante?paid=1`);
   }
 
   const stats = {
@@ -215,8 +217,15 @@ export default function PainelPage() {
                         </div>
                         <StatusBadge status={order.status} />
                       </div>
-                      <p className="mt-2 text-xs text-slate-500">
-                        {order.items.map((i) => i.serviceName).join(", ")}
+                      <p className="mt-2">
+                        <OrderServicesGrid
+                          items={order.items.map(
+                            (i): OrderServiceLine => ({
+                              serviceName: i.serviceName,
+                              employeeName: i.employee?.name ?? null,
+                            })
+                          )}
+                        />
                       </p>
                       <div className="mt-2 flex items-center justify-between text-xs">
                         <span
