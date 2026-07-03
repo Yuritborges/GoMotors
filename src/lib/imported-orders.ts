@@ -10,13 +10,22 @@ export function isImportedHistoricalOrder(notes: string | null | undefined): boo
   );
 }
 
-/** Filtro Prisma: exclui histórico importado das telas operacionais. */
-export const excludeImportedOrdersWhere: Pick<Prisma.ServiceOrderWhereInput, "NOT"> = {
-  NOT: {
-    OR: [
-      { notes: { contains: "ROTATIVO/" } },
-      { notes: { contains: "LOJAS/" } },
-      { notes: { contains: "Loja parceira:" } },
-    ],
-  },
+/**
+ * Filtro Prisma: só ordens operacionais (criadas no app).
+ * NOT/OR com `contains` exclui notes NULL no Postgres — por isso usamos OR explícito.
+ */
+export const operationalOrdersWhere: Prisma.ServiceOrderWhereInput = {
+  OR: [
+    { notes: null },
+    {
+      AND: [
+        { notes: { not: { contains: "ROTATIVO/" } } },
+        { notes: { not: { contains: "LOJAS/" } } },
+        { notes: { not: { contains: "Loja parceira:" } } },
+      ],
+    },
+  ],
 };
+
+/** @deprecated Use operationalOrdersWhere */
+export const excludeImportedOrdersWhere = operationalOrdersWhere;
