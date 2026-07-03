@@ -222,11 +222,16 @@ export default function PainelPage() {
                         <span
                           className={
                             order.paymentStatus === "PENDENTE"
-                              ? "font-medium text-amber-700"
+                              ? order.paymentMethod === "FECHAMENTO_MENSAL"
+                                ? "font-medium text-violet-700"
+                                : "font-medium text-amber-700"
                               : "text-emerald-700"
                           }
                         >
-                          {PAYMENT_STATUS_LABELS[order.paymentStatus] ?? order.paymentStatus}
+                          {order.paymentStatus === "PENDENTE" &&
+                          order.paymentMethod === "FECHAMENTO_MENSAL"
+                            ? "Mensalidade"
+                            : (PAYMENT_STATUS_LABELS[order.paymentStatus] ?? order.paymentStatus)}
                         </span>
                         <span className="text-sm font-medium">{formatCurrency(order.total)}</span>
                       </div>
@@ -239,13 +244,33 @@ export default function PainelPage() {
 
                         {status === "PRONTO" ? (
                           order.paymentStatus === "PENDENTE" ? (
-                            <Button
-                              className="w-full bg-amber-600 font-semibold text-white hover:bg-amber-700"
-                              size="sm"
-                              onClick={() => setPayOrder(order)}
-                            >
-                              Receber pagamento
-                            </Button>
+                            order.paymentMethod === "FECHAMENTO_MENSAL" ? (
+                              <>
+                                <Button
+                                  className="w-full gap-2 bg-emerald-600 font-semibold text-white hover:bg-emerald-700"
+                                  size="sm"
+                                  onClick={() => void deliverOrder(order.id)}
+                                >
+                                  Liberar veículo
+                                  <ChevronRight className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  className="w-full bg-violet-600 font-semibold text-white hover:bg-violet-700"
+                                  size="sm"
+                                  onClick={() => setPayOrder(order)}
+                                >
+                                  Receber fechamento
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                className="w-full bg-amber-600 font-semibold text-white hover:bg-amber-700"
+                                size="sm"
+                                onClick={() => setPayOrder(order)}
+                              >
+                                Receber pagamento
+                              </Button>
+                            )
                           ) : (
                             <Button
                               className="w-full gap-2 bg-emerald-600 font-semibold text-white hover:bg-emerald-700"

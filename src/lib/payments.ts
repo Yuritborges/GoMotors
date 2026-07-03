@@ -1,5 +1,9 @@
 /** Formas de pagamento adiado — não geram receita nem entram no lucro até a baixa. */
-export const DEFERRED_PAYMENT_METHODS = ["PENDENTE", "PAGAR_DEPOIS"] as const;
+export const DEFERRED_PAYMENT_METHODS = [
+  "PENDENTE",
+  "PAGAR_DEPOIS",
+  "FECHAMENTO_MENSAL",
+] as const;
 
 /** Opções exibidas ao registrar uma nova ordem. */
 export const ORDER_PAYMENT_METHODS = [

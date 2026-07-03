@@ -23,6 +23,7 @@ type PaymentModalProps = {
   order: {
     id: string;
     total: number;
+    paymentMethod?: string;
     client: { id: string; name: string };
     vehicle: { plate: string };
   };
@@ -33,12 +34,16 @@ type PaymentModalProps = {
 type PayMode = "single" | "fechamento";
 
 export function PaymentModal({ order, onClose, onPaid }: PaymentModalProps) {
-  const [mode, setMode] = useState<PayMode>("single");
+  const [mode, setMode] = useState<PayMode>(
+    order.paymentMethod === "FECHAMENTO_MENSAL" ? "fechamento" : "single"
+  );
   const [method, setMethod] = useState("PIX");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState<PendingSummary | null>(null);
   const [loadingPending, setLoadingPending] = useState(false);
+
+  const alreadyMonthly = order.paymentMethod === "FECHAMENTO_MENSAL";
 
   useEffect(() => {
     if (mode !== "fechamento") return;
@@ -57,6 +62,24 @@ export function PaymentModal({ order, onClose, onPaid }: PaymentModalProps) {
   const fechamentoTotal = pending?.totalAmount ?? 0;
   const fechamentoCount = pending?.count ?? 0;
   const displayTotal = mode === "single" ? order.total : fechamentoTotal;
+
+  async function handleLaunchMonthly() {
+    setSaving(true);
+    setError("");
+
+    const res = await fetch(`/api/orders/${order.id}/launch-monthly`, {
+      method: "POST",
+    });
+    const data = await res.json();
+    setSaving(false);
+
+    if (!res.ok) {
+      setError(data.error ?? "Erro ao lançar na mensalidade.");
+      return;
+    }
+
+    onPaid(order.id);
+  }
 
   async function handlePay() {
     setSaving(true);
@@ -143,11 +166,49 @@ export function PaymentModal({ order, onClose, onPaid }: PaymentModalProps) {
           </div>
 
           {mode === "fechamento" && (
-            <div className="rounded-xl border border-violet-200 bg-violet-50/80 p-3 text-sm text-violet-950">
-              <p className="font-semibold">Acumula todas as lavagens pendentes do cliente</p>
-              <p className="mt-1 text-xs text-violet-800">
-                Ideal para quem paga várias OS de uma só vez no fim do mês.
-              </p>
+            <div className="space-y-4">
+              <div className="rounded-xl border border-violet-200 bg-violet-50/80 p-3 text-sm text-violet-950">
+                <p className="font-semibold">Conta mensal do cliente</p>
+                <p className="mt-1 text-xs text-violet-800">
+                  <strong>Lançar na mensalidade</strong> — o cliente leva o carro e paga no fim do
+                  mês. <strong>Receber fechamento</strong> — quando ele vier quitar todas as OS
+                  pendentes de uma vez.
+                </p>
+              </div>
+
+              {!alreadyMonthly && (
+                <div className="rounded-xl border border-violet-300 bg-white p-3">
+                  <p className="text-sm font-semibold text-slate-900">
+                    Lançar esta OS na mensalidade
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {formatCurrency(order.total)} · {order.vehicle.plate} entra na conta do mês.
+                    Libere o veículo sem receber agora.
+                  </p>
+                  <Button
+                    className="mt-3 w-full bg-violet-600 hover:bg-violet-700"
+                    disabled={saving}
+                    onClick={() => void handleLaunchMonthly()}
+                  >
+                    {saving ? "Lançando..." : "Lançar na mensalidade"}
+                  </Button>
+                </div>
+              )}
+
+              {alreadyMonthly && (
+                <p className="rounded-lg bg-violet-100 px-3 py-2 text-sm text-violet-900">
+                  Esta OS já está na mensalidade. Libere o veículo ou receba o fechamento abaixo.
+                </p>
+              )}
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-200" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-slate-500">Cliente pagando agora</span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -158,9 +219,7 @@ export function PaymentModal({ order, onClose, onPaid }: PaymentModalProps) {
           {mode === "fechamento" && pending && !loadingPending && (
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="flex items-center justify-between text-sm font-semibold">
-                <span>
-                  {fechamentoCount} serviço(s) em aberto
-                </span>
+                <span>{fechamentoCount} serviço(s) em aberto</span>
                 <span>{formatCurrency(fechamentoTotal)}</span>
               </div>
               <div className="max-h-40 space-y-2 overflow-y-auto">
@@ -181,35 +240,41 @@ export function PaymentModal({ order, onClose, onPaid }: PaymentModalProps) {
             </div>
           )}
 
-          <div>
-            <p className="mb-1 text-xs text-slate-500">
-              {mode === "fechamento" ? "Total do fechamento" : "Valor desta OS"}
-            </p>
-            <p className="text-2xl font-bold">{formatCurrency(displayTotal)}</p>
-          </div>
-
-          <div>
-            <p className="mb-2 text-xs font-medium text-slate-600">
-              Como o cliente pagou?
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {SETTLEMENT_PAYMENT_METHODS.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setMethod(key)}
-                  className={cn(
-                    "min-h-[44px] rounded-xl border px-3 py-2 text-sm font-medium touch-manipulation",
-                    method === key
-                      ? "border-emerald-500 bg-emerald-600 text-white"
-                      : "border-slate-200 bg-white text-slate-700"
-                  )}
-                >
-                  {PAYMENT_METHOD_LABELS[key]}
-                </button>
-              ))}
+          {(mode === "single" || mode === "fechamento") && (
+            <div>
+              <p className="mb-1 text-xs text-slate-500">
+                {mode === "fechamento" ? "Total do fechamento" : "Valor desta OS"}
+              </p>
+              <p className="text-2xl font-bold">{formatCurrency(displayTotal)}</p>
             </div>
-          </div>
+          )}
+
+          {(mode === "single" || mode === "fechamento") && (
+            <div>
+              <p className="mb-2 text-xs font-medium text-slate-600">
+                {mode === "fechamento"
+                  ? "Como o cliente está pagando o fechamento?"
+                  : "Como o cliente pagou?"}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {SETTLEMENT_PAYMENT_METHODS.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setMethod(key)}
+                    className={cn(
+                      "min-h-[44px] rounded-xl border px-3 py-2 text-sm font-medium touch-manipulation",
+                      method === key
+                        ? "border-emerald-500 bg-emerald-600 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    )}
+                  >
+                    {PAYMENT_METHOD_LABELS[key]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
@@ -220,7 +285,8 @@ export function PaymentModal({ order, onClose, onPaid }: PaymentModalProps) {
               className="flex-1 bg-emerald-600 hover:bg-emerald-700"
               disabled={
                 saving ||
-                (mode === "fechamento" && (loadingPending || !pending || pending.count === 0))
+                (mode === "fechamento" &&
+                  (loadingPending || !pending || pending.count === 0))
               }
               onClick={() => void handlePay()}
             >
