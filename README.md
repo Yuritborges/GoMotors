@@ -77,7 +77,7 @@ Ideal para **apresentação a clientes**, validação com a equipe e **implanta�
 
 | Perfil | E-mail | Senha | O que acessa |
 |--------|--------|-------|--------------|
-| **Administrador** | `admin@gomotors.local` | `admin123` | Tudo: caixa, estoque, relatórios, usuários |
+| **Administrador** | `matheuspoli@gomotors.local` | `admin123` | Tudo: caixa, estoque, relatórios, usuários |
 | **Atendente** | `atendente@gomotors.local` | `atendente123` | Painel, ordens, clientes, serviços (consulta) |
 
 > **Dica:** abra o link no celular para ver o layout mobile com barra inferior (**Painel · Ordens · Clientes · Mais**). No desktop, a navegação lateral completa fica disponível.

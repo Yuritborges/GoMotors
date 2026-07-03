@@ -54,8 +54,12 @@ export function ReceiptPrintActions(props: ReceiptActionsProps) {
         Imprimir comprovante
       </Button>
       {hasPhone && (
-        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="lg:hidden">
-          <Button type="button" variant="secondary" className="gap-2">
+        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+          <Button
+            type="button"
+            variant="secondary"
+            className="gap-2 border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+          >
             <MessageCircle className="h-4 w-4" />
             Enviar no WhatsApp
           </Button>

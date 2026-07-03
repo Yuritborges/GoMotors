@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createPrismaClient } from "../src/lib/create-prisma";
 import bcrypt from "bcryptjs";
+import { TEAM_EMPLOYEES } from "../src/lib/constants";
 
 const prisma = createPrismaClient();
 
@@ -41,8 +42,8 @@ async function main() {
   await prisma.user.createMany({
     data: [
       {
-        name: "Proprietário",
-        email: "admin@gomotors.local",
+        name: "Matheus — Go Motors",
+        email: "matheuspoli@gomotors.local",
         passwordHash: ownerPassword,
         role: "PROPRIETARIO",
       },

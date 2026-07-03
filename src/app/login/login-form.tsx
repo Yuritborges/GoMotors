@@ -38,7 +38,7 @@ export function LoginForm() {
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
-                placeholder="admin@gomotors.local"
+                placeholder="seu@email.com"
                 required
                 autoComplete="username"
                 defaultValue=""
@@ -71,18 +71,6 @@ export function LoginForm() {
           </form>
         </CardContent>
       </Card>
-
-      <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-xs text-zinc-400">
-        <p className="font-medium text-zinc-300">Acesso de demonstração</p>
-        <p className="mt-1">
-          Admin: <span className="text-zinc-200">admin@gomotors.local</span> /{" "}
-          <span className="text-zinc-200">admin123</span>
-        </p>
-        <p className="mt-2 text-amber-400/90">
-          No celular use o endereço com porta, ex:{" "}
-          <span className="font-mono text-amber-300">:3000</span>
-        </p>
-      </div>
     </div>
   );
 }

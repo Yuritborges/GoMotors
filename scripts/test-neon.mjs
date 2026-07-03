@@ -10,7 +10,7 @@ async function run() {
     checks.push({ name: "Usuários", ok: users >= 2, detail: `${users} usuário(s)` });
 
     const admin = await prisma.user.findUnique({
-      where: { email: "admin@gomotors.local" },
+      where: { email: "matheuspoli@gomotors.local" },
     });
     checks.push({
       name: "Admin demo",

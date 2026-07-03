@@ -43,7 +43,7 @@ $results += Test-Endpoint "API /me sem login" GET "$base/api/auth/me" $null @(40
 $results += Test-Endpoint "Home sem login" GET "$base/" $null @(307,302)
 
 # Login admin
-$login = Test-Endpoint "Login admin API" POST "$base/api/auth/login" '{"email":"admin@gomotors.local","password":"admin123"}' @(200)
+$login = Test-Endpoint "Login admin API" POST "$base/api/auth/login" '{"email":"matheuspoli@gomotors.local","password":"admin123"}' @(200)
 $results += $login
 
 $cookie = $null
@@ -58,7 +58,7 @@ if ($cookie) {
   $results += Test-Endpoint "API caixa" GET "$base/api/cash" $null @(200) $cookie
   $results += Test-Endpoint "API produtos" GET "$base/api/products" $null @(200) $cookie
   $results += Test-Endpoint "API stock alerts" GET "$base/api/stock/alerts" $null @(200) $cookie
-  $results += Test-Endpoint "Login credencial errada" POST "$base/api/auth/login" '{"email":"admin@gomotors.local","password":"wrong"}' @(401)
+  $results += Test-Endpoint "Login credencial errada" POST "$base/api/auth/login" '{"email":"matheuspoli@gomotors.local","password":"wrong"}' @(401)
   $results += Test-Endpoint "Login atendente" POST "$base/api/auth/login" '{"email":"atendente@gomotors.local","password":"atendente123"}' @(200)
 } else {
   $results += [PSCustomObject]@{ Name="Sessão autenticada"; Ok=$false; Detail="Cookie não retornado no login" }

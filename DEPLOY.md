@@ -120,7 +120,7 @@ https://gomotors-xxxxx.vercel.app
 
 | Perfil | E-mail | Senha |
 |--------|--------|-------|
-| Administrador | `admin@gomotors.local` | `admin123` |
+| Administrador | `matheuspoli@gomotors.local` | `admin123` |
 | Atendente | `atendente@gomotors.local` | `atendente123` |
 
 Funciona no **celular e desktop** — mesmo link, de qualquer lugar.

@@ -295,6 +295,8 @@ function buildVehicleMap(allRows: RotativoRow[]): Map<string, VehicleSeed> {
 }
 
 async function clearDatabase() {
+  await prisma.auditLog.deleteMany();
+  await prisma.stockMovement.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.serviceOrder.deleteMany();
@@ -348,7 +350,7 @@ async function main() {
     data: [
       {
         name: "Matheus — Go Motors",
-        email: "admin@gomotors.local",
+        email: "matheuspoli@gomotors.local",
         passwordHash: ownerPassword,
         role: "PROPRIETARIO",
       },
