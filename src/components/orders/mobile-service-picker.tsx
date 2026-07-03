@@ -244,10 +244,10 @@ export function MobileServicePicker({
 
       <div className="border-t border-slate-100 pt-4">
         <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-sky-700">
-          Tipo de lavagem *
+          Serviços
         </p>
         <p className="mb-3 text-xs text-slate-500">
-          Selecione o serviço e o responsável para calcular o valor.
+          Selecione o serviço e o responsável. Pode ser só um item, sem lavagem completa.
         </p>
         <div className="space-y-2">
           {washServices.length === 0 ? (

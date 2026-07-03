@@ -45,9 +45,11 @@ export function findDefaultLavagemServiceId(
   return any?.id ?? null;
 }
 
+type WorkflowAssignmentLike = { employeeId: string | null };
+
 export function countAssignments(
-  workflow: Record<WorkflowTaskKey, WorkflowTaskState>,
-  extras: Record<string, ExtraServiceState>
+  workflow: Record<WorkflowTaskKey, WorkflowAssignmentLike>,
+  extras: Record<string, { selected: boolean; employeeId: string | null }>
 ): number {
   let n = 0;
   for (const task of Object.values(workflow)) {
@@ -65,6 +67,14 @@ export function countWorkflowAssignments(
   return Object.values(workflow).filter((t) => t.employeeId).length;
 }
 
+export function hasAnyAssignedService(
+  workflow: Record<WorkflowTaskKey, WorkflowAssignmentLike>,
+  extras: Record<string, { selected: boolean; employeeId: string | null }>
+): boolean {
+  return countAssignments(workflow, extras) > 0;
+}
+
+/** @deprecated Use hasAnyAssignedService — mantido para compatibilidade interna. */
 export function hasSelectedWashService(
   services: { id: string; name: string }[],
   extras: Record<string, { selected: boolean; employeeId: string | null }>

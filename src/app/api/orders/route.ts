@@ -8,7 +8,7 @@ import {
 } from "@/lib/build-order-items";
 import { endOfDay, startOfDay } from "@/lib/utils";
 import type { WorkflowTaskKey } from "@/lib/order-workflow";
-import { hasSelectedWashService, BLOCKING_ORDER_STATUSES } from "@/lib/order-workflow";
+import { hasAnyAssignedService, BLOCKING_ORDER_STATUSES } from "@/lib/order-workflow";
 import { paymentStatusForMethod } from "@/lib/payments";
 import {
   OrderEntryDateError,
@@ -148,9 +148,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!hasSelectedWashService(services, extras)) {
+    if (!hasAnyAssignedService(workflow, extras)) {
       return NextResponse.json(
-        { error: "Selecione o tipo de lavagem antes de registrar a ordem." },
+        { error: "Selecione ao menos um serviço ou etapa com funcionário." },
         { status: 400 }
       );
     }

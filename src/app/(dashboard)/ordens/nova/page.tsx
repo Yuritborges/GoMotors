@@ -16,8 +16,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { MobileServicePicker } from "@/components/orders/mobile-service-picker";
 import { buildOrderItems, orderItemsSubtotal } from "@/lib/build-order-items";
 import {
-  countWorkflowAssignments,
-  hasSelectedWashService,
+  countAssignments,
+  hasAnyAssignedService,
   type ExtraServiceState,
   type WorkflowTaskKey,
   type WorkflowTaskState,
@@ -267,19 +267,17 @@ export default function NovaOrdemPage() {
 
   const total = Math.max(subtotal - Number(discount || 0), 0);
 
-  const assignmentCount = countWorkflowAssignments(workflow);
-  const washSelected = hasSelectedWashService(services, extras);
   const extrasMissingEmployee = Object.values(extras).some(
     (e) => e.selected && !e.employeeId
   );
-
   const plateReady = Boolean(clientId && vehicleId && !plateLookup?.activeOrder);
-  const servicesReady = washSelected && !extrasMissingEmployee;
+
+  const assignmentCount = countAssignments(workflow, extras);
+  const servicesReady = assignmentCount > 0 && !extrasMissingEmployee;
   const canSubmit =
     plateReady &&
     servicesReady &&
-    assignmentCount > 0 &&
-    subtotal > 0 &&
+    orderItems.length > 0 &&
     !saving &&
     !plateLookup?.activeOrder;
 
@@ -341,8 +339,8 @@ export default function NovaOrdemPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!clientId || !vehicleId || orderItems.length === 0 || subtotal <= 0) return;
-    if (!hasSelectedWashService(services, extras)) return;
+    if (!clientId || !vehicleId || orderItems.length === 0) return;
+    if (!hasAnyAssignedService(workflow, extras)) return;
     if (plateLookup?.activeOrder) return;
 
     const workflowTasks = (
@@ -579,9 +577,10 @@ export default function NovaOrdemPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base sm:text-lg">Equipe — Lavagem · Aspiração · Secagem</CardTitle>
+            <CardTitle className="text-base sm:text-lg">Equipe e serviços</CardTitle>
             <p className="text-sm text-slate-500">
-              Escolha o funcionário responsável por cada etapa.
+              Etapas de lavagem, aspiração e secagem são opcionais. Escolha os serviços que o
+              cliente contratou.
             </p>
           </CardHeader>
           <CardContent>
@@ -596,19 +595,11 @@ export default function NovaOrdemPage() {
               onExtrasChange={setExtras}
               onShowMoreOptionsChange={setShowMoreOptions}
             />
-            {extrasMissingEmployee && (
+            {plateReady && !servicesReady && (
               <p className="mt-3 text-sm text-amber-800">
-                Escolha o funcionário para cada serviço marcado.
-              </p>
-            )}
-            {plateReady && !washSelected && (
-              <p className="mt-3 text-sm text-amber-800">
-                Selecione o tipo de lavagem e o responsável para continuar.
-              </p>
-            )}
-            {plateReady && washSelected && assignmentCount === 0 && (
-              <p className="mt-3 text-sm text-amber-800">
-                Atribua pelo menos um funcionário às etapas de lavagem, aspiração ou secagem.
+                {extrasMissingEmployee
+                  ? "Escolha o funcionário para cada serviço marcado."
+                  : "Selecione ao menos um serviço ou etapa e atribua um funcionário."}
               </p>
             )}
           </CardContent>
@@ -819,11 +810,11 @@ export default function NovaOrdemPage() {
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-slate-500">
-              {!washSelected
-                ? "Selecione o tipo de lavagem"
-                : assignmentCount === 0
-                  ? "Atribua a equipe (lavagem/aspiração/secagem)"
-                  : `${assignmentCount} etapa(s) na equipe`}
+              {!servicesReady
+                ? extrasMissingEmployee
+                  ? "Escolha o responsável"
+                  : "Selecione um serviço"
+                : `${assignmentCount} serviço(s) na ordem`}
             </p>
             <p className="text-lg font-bold text-slate-900">{formatCurrency(total)}</p>
           </div>
