@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ORDER_STATUS_FLOW } from "@/lib/constants";
 import { handleAuthError, requireAuth } from "@/lib/auth";
+import { isAllowedStatusTransition } from "@/lib/order-status-advance";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -16,9 +17,19 @@ export async function PATCH(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Status inválido" }, { status: 400 });
     }
 
-    const existing = await prisma.serviceOrder.findUnique({ where: { id } });
+    const existing = await prisma.serviceOrder.findUnique({
+      where: { id },
+      include: { items: true },
+    });
     if (!existing) {
       return NextResponse.json({ error: "Ordem não encontrada" }, { status: 404 });
+    }
+
+    if (
+      status !== "CANCELADO" &&
+      !isAllowedStatusTransition(existing.status, status, existing.items)
+    ) {
+      return NextResponse.json({ error: "Transição de status inválida para esta ordem." }, { status: 400 });
     }
 
     if (status === "ENTREGUE" && existing.paymentStatus === "PENDENTE") {

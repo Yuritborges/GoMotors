@@ -1,99 +1,26 @@
-import { PRIMARY_WORKFLOW_TASKS } from "./order-workflow";
+import { FIXED_DISPLAY_LANES } from "./display-lanes-constants";
+import type {
+  DisplayColumn,
+  DisplayLaneEntry,
+  DisplayOrderInput,
+  FixedDisplayLaneKey,
+} from "./display-lanes-types";
+import {
+  displayServiceLabel,
+  dynamicLaneKey,
+  isAspiracaoItem,
+  isDynamicExtraItem,
+  isLavagemColumnItem,
+  isSecagemItem,
+} from "./order-service-lanes";
 
-export type FixedDisplayLaneKey =
-  | "AGUARDANDO"
-  | "LAVAGEM"
-  | "ASPIRACAO"
-  | "SECAGEM"
-  | "PRONTO";
-
-export const FIXED_DISPLAY_LANES: { key: FixedDisplayLaneKey; label: string }[] = [
-  { key: "AGUARDANDO", label: "Aguardando" },
-  { key: "LAVAGEM", label: "Lavagem" },
-  { key: "ASPIRACAO", label: "Aspiração" },
-  { key: "SECAGEM", label: "Secagem" },
-  { key: "PRONTO", label: "Pronto" },
-];
-
-export type DisplayLaneEntry = {
-  orderId: string;
-  plate: string;
-  clientName: string;
-  serviceName: string;
-  employeeName: string | null;
-  queuePosition?: number;
-};
-
-export type DisplayColumn = {
-  lane: string;
-  label: string;
-  fixed: boolean;
-  entries: DisplayLaneEntry[];
-};
-
-export type DisplayOrderInput = {
-  id: string;
-  status: string;
-  vehicle: { plate: string };
-  client: { name: string };
-  items: { serviceName: string; employee: { name: string } | null }[];
-};
-
-function normalizeService(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-const WORKFLOW_LABELS = new Set(
-  PRIMARY_WORKFLOW_TASKS.map((t) => normalizeService(t.label))
-);
-
-function isWorkflowItem(serviceName: string): boolean {
-  return WORKFLOW_LABELS.has(normalizeService(serviceName));
-}
-
-/** Lavagem simples/completa etc. entram na coluna Lavagem, não como extra dinâmico. */
-function isLavagemColumnItem(serviceName: string): boolean {
-  if (isWorkflowItem(serviceName)) {
-    return normalizeService(serviceName) === "lavagem";
-  }
-  const n = normalizeService(serviceName);
-  return (
-    n.includes("lavagem") ||
-    n.includes("ducha") ||
-    n.includes("motor") ||
-    n.includes("chassi")
-  );
-}
-
-function isAspiracaoItem(serviceName: string): boolean {
-  const n = normalizeService(serviceName);
-  return n === "aspiracao" || n.startsWith("aspir");
-}
-
-function isSecagemItem(serviceName: string): boolean {
-  const n = normalizeService(serviceName);
-  return n === "secagem" || n.startsWith("secag");
-}
-
-/** Serviço extra (Polimento, Higienização…) — coluna dinâmica só se houver carro. */
-function isDynamicExtraItem(serviceName: string): boolean {
-  if (isAspiracaoItem(serviceName) || isSecagemItem(serviceName)) return false;
-  if (isLavagemColumnItem(serviceName)) return false;
-  return true;
-}
-
-function dynamicLaneKey(serviceName: string): string {
-  return `extra:${normalizeService(serviceName)}`;
-}
-
-function displayLabel(serviceName: string): string {
-  const trimmed = serviceName.trim();
-  if (!trimmed) return "Serviço";
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-}
+export type {
+  DisplayColumn,
+  DisplayLaneEntry,
+  DisplayOrderInput,
+  FixedDisplayLaneKey,
+} from "./display-lanes-types";
+export { FIXED_DISPLAY_LANES } from "./display-lanes-constants";
 
 export function buildDisplayColumns(orders: DisplayOrderInput[]): DisplayColumn[] {
   const fixed: Record<FixedDisplayLaneKey, DisplayLaneEntry[]> = {
@@ -149,7 +76,7 @@ export function buildDisplayColumns(orders: DisplayOrderInput[]): DisplayColumn[
         if (!isDynamicExtraItem(item.serviceName)) continue;
         const key = dynamicLaneKey(item.serviceName);
         const bucket = dynamic.get(key) ?? {
-          label: displayLabel(item.serviceName),
+          label: displayServiceLabel(item.serviceName),
           entries: [],
         };
         bucket.entries.push({

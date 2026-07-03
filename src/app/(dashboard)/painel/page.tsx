@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/utils";
 import { isOwner } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/auth";
 import { ORDER_STATUS_FLOW, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/constants";
+import { getNextOrderStatus } from "@/lib/order-status-advance";
 import { usePolling } from "@/lib/use-polling";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -56,12 +57,11 @@ export default function PainelPage() {
 
   usePolling(loadOrders, 3000);
 
-  async function advanceStatus(orderId: string, currentStatus: string) {
-    const idx = ORDER_STATUS_FLOW.indexOf(currentStatus as (typeof ORDER_STATUS_FLOW)[number]);
-    if (idx === -1 || idx >= ORDER_STATUS_FLOW.length - 1) return;
+  async function advanceStatus(order: Order) {
+    const nextStatus = getNextOrderStatus(order.status, order.items);
+    if (!nextStatus || nextStatus === "ENTREGUE") return;
 
-    const nextStatus = ORDER_STATUS_FLOW[idx + 1];
-    const res = await fetch(`/api/orders/${orderId}/status`, {
+    const res = await fetch(`/api/orders/${order.id}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: nextStatus }),
@@ -294,7 +294,7 @@ export default function PainelPage() {
                           <Button
                             className="w-full gap-2 bg-emerald-600 font-semibold text-white shadow-md hover:bg-emerald-700"
                             size="sm"
-                            onClick={() => void advanceStatus(order.id, order.status)}
+                            onClick={() => void advanceStatus(order)}
                           >
                             Avançar etapa
                             <ChevronRight className="h-4 w-4" />
