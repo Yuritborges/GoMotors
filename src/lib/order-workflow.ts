@@ -67,7 +67,7 @@ export function countWorkflowAssignments(
 
 export function hasSelectedWashService(
   services: { id: string; name: string }[],
-  extras: Record<string, ExtraServiceState>
+  extras: Record<string, { selected: boolean; employeeId: string | null }>
 ): boolean {
   const byId = new Map(services.map((s) => [s.id, s]));
   return Object.entries(extras).some(([id, state]) => {
