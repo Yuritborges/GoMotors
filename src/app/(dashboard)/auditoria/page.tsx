@@ -13,6 +13,7 @@ type AuditEntry = {
   entityType: string;
   entityId: string | null;
   summary: string;
+  productName: string | null;
   createdAt: string;
 };
 
@@ -62,7 +63,10 @@ export default function AuditoriaPage() {
                   <Badge className="border-slate-200 bg-white text-xs text-slate-700">
                     {ACTION_LABELS[log.action] ?? log.action}
                   </Badge>
-                  <span className="text-sm font-medium text-slate-900">{log.userName}</span>
+                  {log.productName && (
+                    <span className="text-sm font-semibold text-slate-900">{log.productName}</span>
+                  )}
+                  <span className="text-sm text-slate-500">{log.userName}</span>
                 </div>
                 <p className="mt-1 text-sm text-slate-700">{log.summary}</p>
               </div>

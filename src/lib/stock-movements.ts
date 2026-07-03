@@ -39,7 +39,7 @@ export async function recordStockMovement(params: {
     }),
   ]);
 
-  return movement;
+  return { movement, productName: product.name };
 }
 
 export async function applyStockDelta(params: {

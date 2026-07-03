@@ -14,6 +14,31 @@ const VALID_TYPES = new Set<StockMovementType>([
   "INVENTARIO",
 ]);
 
+const TYPE_LABELS: Record<StockMovementType, string> = {
+  COMPRA: "compra",
+  AJUSTE: "ajuste",
+  SAIDA: "saída",
+  ENTRADA: "entrada",
+  INVENTARIO: "inventário",
+};
+
+function stockAuditSummary(params: {
+  userName: string;
+  type: StockMovementType;
+  productName: string;
+  quantityBefore: number;
+  quantityAfter: number;
+  delta: number;
+  notes?: string | null;
+}) {
+  const deltaText =
+    params.delta !== 0
+      ? ` (${params.delta > 0 ? "+" : ""}${params.delta} un.)`
+      : "";
+  const notesText = params.notes ? ` — ${params.notes}` : "";
+  return `${params.userName} registrou ${TYPE_LABELS[params.type]} de "${params.productName}": ${params.quantityBefore} → ${params.quantityAfter}${deltaText}${notesText}`;
+}
+
 export async function POST(request: Request, { params }: Params) {
   try {
     const user = await requireOwner();
@@ -25,10 +50,10 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Tipo de movimentação inválido" }, { status: 400 });
     }
 
-    let movement;
+    let result;
 
     if (type === "INVENTARIO" && body.quantityAfter !== undefined) {
-      movement = await recordStockMovement({
+      result = await recordStockMovement({
         productId,
         type,
         quantityAfter: Number(body.quantityAfter),
@@ -36,7 +61,7 @@ export async function POST(request: Request, { params }: Params) {
         notes: body.notes ?? null,
       });
     } else if (body.delta !== undefined) {
-      movement = await applyStockDelta({
+      result = await applyStockDelta({
         productId,
         delta: Number(body.delta),
         type,
@@ -45,7 +70,7 @@ export async function POST(request: Request, { params }: Params) {
         notes: body.notes ?? null,
       });
     } else if (type === "COMPRA" && body.quantity !== undefined) {
-      movement = await applyStockDelta({
+      result = await applyStockDelta({
         productId,
         delta: Math.abs(Number(body.quantity)),
         type: "COMPRA",
@@ -57,16 +82,29 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Informe delta ou quantityAfter" }, { status: 400 });
     }
 
+    const { movement, productName } = result;
+
     await logAudit({
       user,
       action: `STOCK_${type}`,
       entityType: "product",
       entityId: productId,
-      summary: `${movement.userName} registrou ${type.toLowerCase()}: ${movement.quantityBefore} → ${movement.quantityAfter}`,
+      summary: stockAuditSummary({
+        userName: movement.userName,
+        type,
+        productName,
+        quantityBefore: movement.quantityBefore,
+        quantityAfter: movement.quantityAfter,
+        delta: movement.delta,
+        notes: movement.notes,
+      }),
       metadata: {
+        productName,
+        productId,
         delta: movement.delta,
         notes: movement.notes,
         unitCost: movement.unitCost,
+        movementType: type,
       },
     });
 
