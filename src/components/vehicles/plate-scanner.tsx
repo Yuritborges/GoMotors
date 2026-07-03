@@ -8,6 +8,7 @@ import {
   generatePlateLookupVariants,
   recognizePlateCandidatesFromImage,
 } from "@/lib/plate-ocr";
+import { PlateCameraModal } from "@/components/vehicles/plate-camera-modal";
 
 type PlateScannerProps = {
   onPlateDetected: (plate: string) => void;
@@ -66,10 +67,10 @@ export function PlateScanner({
   className,
 }: PlateScannerProps) {
   const reactId = useId().replace(/:/g, "");
-  const cameraInputId = `plate-camera-${reactId}`;
   const galleryInputId = `plate-gallery-${reactId}`;
 
   const [phase, setPhase] = useState<ScanPhase>("idle");
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -169,16 +170,6 @@ export function PlateScanner({
   return (
     <div className={cn("relative space-y-2", className)}>
       <input
-        id={cameraInputId}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        tabIndex={-1}
-        disabled={busy}
-        onChange={onFileChange}
-      />
-      <input
         id={galleryInputId}
         type="file"
         accept="image/*"
@@ -186,6 +177,12 @@ export function PlateScanner({
         tabIndex={-1}
         disabled={busy}
         onChange={onFileChange}
+      />
+
+      <PlateCameraModal
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(file) => void processFile(file)}
       />
 
       {busy ? (
@@ -196,10 +193,14 @@ export function PlateScanner({
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2 lg:hidden">
-            <label htmlFor={cameraInputId} className={cn(actionClassName, "cursor-pointer")}>
+            <button
+              type="button"
+              className={cn(actionClassName, "cursor-pointer")}
+              onClick={() => setCameraOpen(true)}
+            >
               <Camera className="h-5 w-5 shrink-0" />
               Tirar foto
-            </label>
+            </button>
             <label htmlFor={galleryInputId} className={cn(actionClassName, "cursor-pointer")}>
               <ImageIcon className="h-5 w-5 shrink-0" />
               Galeria
@@ -217,7 +218,7 @@ export function PlateScanner({
       )}
 
       <p className="text-center text-xs text-slate-500 lg:hidden">
-        Enquadre só a placa na foto. Placas em duas linhas (moto): aproxime e use boa luz.
+        Ao tirar foto, use a moldura na tela — só os caracteres da placa entram na leitura.
       </p>
       <p className="hidden text-xs text-slate-500 lg:block">
         Selecione uma foto da placa salva no computador.
