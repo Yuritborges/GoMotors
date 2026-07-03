@@ -1,3 +1,5 @@
+import type { Prisma } from "../generated/prisma/client";
+
 /** Ordens criadas pelo import das planilhas (histórico), não pela operação diária. */
 export function isImportedHistoricalOrder(notes: string | null | undefined): boolean {
   if (!notes) return false;
@@ -9,7 +11,7 @@ export function isImportedHistoricalOrder(notes: string | null | undefined): boo
 }
 
 /** Filtro Prisma: exclui histórico importado das telas operacionais. */
-export const excludeImportedOrdersWhere = {
+export const excludeImportedOrdersWhere: Pick<Prisma.ServiceOrderWhereInput, "NOT"> = {
   NOT: {
     OR: [
       { notes: { contains: "ROTATIVO/" } },
@@ -17,4 +19,4 @@ export const excludeImportedOrdersWhere = {
       { notes: { contains: "Loja parceira:" } },
     ],
   },
-} as const;
+};
