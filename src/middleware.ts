@@ -31,7 +31,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  const ownerOnlyPages = ["/estoque", "/produtos", "/caixa", "/funcionarios", "/financeiro", "/despesas", "/relatorios", "/usuarios"];
+  const ownerOnlyPages = ["/estoque", "/produtos", "/caixa", "/funcionarios", "/financeiro", "/despesas", "/relatorios", "/auditoria", "/usuarios"];
   if (
     session.role !== "PROPRIETARIO" &&
     ownerOnlyPages.some((path) => pathname.startsWith(path))
