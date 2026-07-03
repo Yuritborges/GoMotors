@@ -73,12 +73,14 @@ Ideal para **apresentação a clientes**, validação com a equipe e **implanta�
 | **Sistema** | [https://go-motors-ten.vercel.app](https://go-motors-ten.vercel.app) |
 | **Tela TV (clientes)** | [https://go-motors-ten.vercel.app/display](https://go-motors-ten.vercel.app/display) |
 
-### Credenciais de demonstração
+### Acesso ao sistema
 
-| Perfil | E-mail | Senha | O que acessa |
-|--------|--------|-------|--------------|
-| **Administrador** | `matheuspoli@gomotors.local` | `admin123` | Tudo: caixa, estoque, relatórios, usuários |
-| **Atendente** | `atendente@gomotors.local` | `atendente123` | Painel, ordens, clientes, serviços (consulta) |
+| Ambiente | URL |
+|----------|-----|
+| **Sistema** | [https://go-motors-ten.vercel.app](https://go-motors-ten.vercel.app) |
+| **Tela TV (clientes)** | [https://go-motors-ten.vercel.app/display](https://go-motors-ten.vercel.app/display) |
+
+Use o e-mail e senha definidos pelo administrador. Para ambiente novo, configure `SEED_OWNER_PASSWORD` no `.env` antes do seed ou altere a senha em **Usuários** / `npm run db:set-password`.
 
 > **Dica:** abra o link no celular para ver o layout mobile com barra inferior (**Painel · Ordens · Clientes · Mais**). No desktop, a navegação lateral completa fica disponível.
 

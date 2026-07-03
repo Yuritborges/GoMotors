@@ -9,6 +9,7 @@ import * as XLSX from "xlsx";
 import bcrypt from "bcryptjs";
 import { createPrismaClient } from "../src/lib/create-prisma";
 import { TEAM_EMPLOYEES } from "../src/lib/constants";
+import { resolveSeedPassword } from "../src/lib/seed-passwords";
 import {
   canonicalService,
   cleanModelName,
@@ -344,8 +345,14 @@ async function main() {
   await clearDatabase();
 
   console.log("Criando usuários Go Motors...");
-  const ownerPassword = await bcrypt.hash("admin123", 12);
-  const attendantPassword = await bcrypt.hash("atendente123", 12);
+  const ownerPassword = await bcrypt.hash(
+    resolveSeedPassword("SEED_OWNER_PASSWORD", "Administrador"),
+    12
+  );
+  const attendantPassword = await bcrypt.hash(
+    resolveSeedPassword("SEED_ATTENDANT_PASSWORD", "Atendente"),
+    12
+  );
   await prisma.user.createMany({
     data: [
       {

@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { handleAuthError, requireAuth, requireOwner } from "@/lib/auth";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, { params }: Params) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return handleAuthError(error);
+  }
+
   const { id } = await params;
 
   const client = await prisma.client.findUnique({
@@ -29,6 +36,12 @@ export async function GET(_request: Request, { params }: Params) {
 }
 
 export async function PUT(request: Request, { params }: Params) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return handleAuthError(error);
+  }
+
   const { id } = await params;
   const body = await request.json();
 
@@ -46,6 +59,12 @@ export async function PUT(request: Request, { params }: Params) {
 }
 
 export async function DELETE(_request: Request, { params }: Params) {
+  try {
+    await requireOwner();
+  } catch (error) {
+    return handleAuthError(error);
+  }
+
   const { id } = await params;
   await prisma.client.delete({ where: { id } });
   return NextResponse.json({ ok: true });

@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createPrismaClient } from "../src/lib/create-prisma";
 import bcrypt from "bcryptjs";
 import { TEAM_EMPLOYEES } from "../src/lib/constants";
+import { assertSeedAllowed, resolveSeedPassword } from "../src/lib/seed-passwords";
 
 const prisma = createPrismaClient();
 
@@ -24,6 +25,8 @@ const vehiclePriceMultipliers: Record<string, number> = {
 };
 
 async function main() {
+  assertSeedAllowed();
+
   await prisma.payment.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.serviceOrder.deleteMany();
@@ -36,8 +39,14 @@ async function main() {
   await prisma.product.deleteMany();
   await prisma.user.deleteMany();
 
-  const ownerPassword = await bcrypt.hash("admin123", 12);
-  const attendantPassword = await bcrypt.hash("atendente123", 12);
+  const ownerPassword = await bcrypt.hash(
+    resolveSeedPassword("SEED_OWNER_PASSWORD", "Administrador"),
+    12
+  );
+  const attendantPassword = await bcrypt.hash(
+    resolveSeedPassword("SEED_ATTENDANT_PASSWORD", "Atendente"),
+    12
+  );
 
   await prisma.user.createMany({
     data: [

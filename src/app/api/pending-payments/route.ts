@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { handleAuthError, requireAuth } from "@/lib/auth";
+import { handleAuthError, requireOwner } from "@/lib/auth";
 import {
   fetchPendingByClient,
   fetchRecentSettlements,
@@ -8,7 +8,7 @@ import {
 
 export async function GET() {
   try {
-    await requireAuth();
+    await requireOwner();
 
     const debtors = await fetchPendingByClient();
     const recentSettlements = await fetchRecentSettlements();

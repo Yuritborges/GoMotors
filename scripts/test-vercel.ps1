@@ -42,26 +42,36 @@ $results += Test-Endpoint "Display API" GET "$base/api/display/orders" $null @(2
 $results += Test-Endpoint "API /me sem login" GET "$base/api/auth/me" $null @(401)
 $results += Test-Endpoint "Home sem login" GET "$base/" $null @(307,302)
 
-# Login admin
-$login = Test-Endpoint "Login admin API" POST "$base/api/auth/login" '{"email":"matheuspoli@gomotors.local","password":"admin123"}' @(200)
-$results += $login
+$adminEmail = $env:TEST_ADMIN_EMAIL
+$adminPassword = $env:TEST_ADMIN_PASSWORD
 
-$cookie = $null
-if ($login.Cookie) { $cookie = ($login.Cookie -split ";")[0] }
+if ($adminEmail -and $adminPassword) {
+  $loginBody = (@{ email = $adminEmail; password = $adminPassword } | ConvertTo-Json -Compress)
+  $login = Test-Endpoint "Login admin API" POST "$base/api/auth/login" $loginBody @(200)
+  $results += $login
 
-if ($cookie) {
-  $results += Test-Endpoint "API /me com login" GET "$base/api/auth/me" $null @(200) $cookie
-  $results += Test-Endpoint "API clientes" GET "$base/api/clients" $null @(200) $cookie
-  $results += Test-Endpoint "API ordens" GET "$base/api/orders" $null @(200) $cookie
-  $results += Test-Endpoint "API servicos" GET "$base/api/services" $null @(200) $cookie
-  $results += Test-Endpoint "API dashboard" GET "$base/api/dashboard" $null @(200) $cookie
-  $results += Test-Endpoint "API caixa" GET "$base/api/cash" $null @(200) $cookie
-  $results += Test-Endpoint "API produtos" GET "$base/api/products" $null @(200) $cookie
-  $results += Test-Endpoint "API stock alerts" GET "$base/api/stock/alerts" $null @(200) $cookie
-  $results += Test-Endpoint "Login credencial errada" POST "$base/api/auth/login" '{"email":"matheuspoli@gomotors.local","password":"wrong"}' @(401)
-  $results += Test-Endpoint "Login atendente" POST "$base/api/auth/login" '{"email":"atendente@gomotors.local","password":"atendente123"}' @(200)
+  $cookie = $null
+  if ($login.Cookie) { $cookie = ($login.Cookie -split ";")[0] }
+
+  if ($cookie) {
+    $results += Test-Endpoint "API /me com login" GET "$base/api/auth/me" $null @(200) $cookie
+    $results += Test-Endpoint "API clientes" GET "$base/api/clients" $null @(200) $cookie
+    $results += Test-Endpoint "API ordens" GET "$base/api/orders" $null @(200) $cookie
+    $results += Test-Endpoint "API servicos" GET "$base/api/services" $null @(200) $cookie
+    $results += Test-Endpoint "API dashboard" GET "$base/api/dashboard" $null @(200) $cookie
+    $results += Test-Endpoint "API caixa" GET "$base/api/cash" $null @(200) $cookie
+    $results += Test-Endpoint "API produtos" GET "$base/api/products" $null @(200) $cookie
+    $results += Test-Endpoint "API stock alerts" GET "$base/api/stock/alerts" $null @(200) $cookie
+    $results += Test-Endpoint "Login credencial errada" POST "$base/api/auth/login" '{"email":"invalid@example.com","password":"wrong"}' @(401)
+  } else {
+    $results += [PSCustomObject]@{ Name="Sessão autenticada"; Ok=$false; Detail="Cookie não retornado no login" }
+  }
 } else {
-  $results += [PSCustomObject]@{ Name="Sessão autenticada"; Ok=$false; Detail="Cookie não retornado no login" }
+  $results += [PSCustomObject]@{
+    Name = "Login autenticado (omitido)"
+    Ok = $true
+    Detail = "Defina TEST_ADMIN_EMAIL e TEST_ADMIN_PASSWORD para testar login"
+  }
 }
 
 foreach ($r in $results) {

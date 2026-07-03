@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { handleAuthError, requireOwner } from "@/lib/auth";
+import { handleAuthError, requireAuth, requireOwner } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, { params }: Params) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return handleAuthError(error);
+  }
+
   const { id } = await params;
 
   const order = await prisma.serviceOrder.findUnique({
@@ -27,6 +33,12 @@ export async function GET(_request: Request, { params }: Params) {
 }
 
 export async function PATCH(request: Request, { params }: Params) {
+  try {
+    await requireOwner();
+  } catch (error) {
+    return handleAuthError(error);
+  }
+
   const { id } = await params;
   const body = await request.json();
 
