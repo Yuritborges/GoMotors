@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import { usePolling } from "@/lib/use-polling";
 
 type DisplayData = {
   updatedAt: string;
@@ -42,16 +43,12 @@ export default function DisplayPage() {
   const [data, setData] = useState<DisplayData | null>(null);
   const [clock, setClock] = useState("");
 
-  async function load() {
+  const load = useCallback(async () => {
     const res = await fetch("/api/display/orders");
     setData(await res.json());
-  }
-
-  useEffect(() => {
-    load();
-    const interval = setInterval(load, 10000);
-    return () => clearInterval(interval);
   }, []);
+
+  usePolling(load, 5000);
 
   useEffect(() => {
     function tick() {

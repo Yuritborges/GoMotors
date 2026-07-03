@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { Trash2 } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { usePolling } from "@/lib/use-polling";
+import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
@@ -12,6 +14,7 @@ type Order = {
   id: string;
   status: string;
   total: number;
+  paymentStatus: string;
   entryAt: string;
   client: { name: string };
   vehicle: { plate: string };
@@ -20,12 +23,38 @@ type Order = {
 
 export default function OrdensPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [isOwner, setIsOwner] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const loadOrders = useCallback(async () => {
+    const res = await fetch("/api/orders");
+    setOrders(await res.json());
+  }, []);
+
+  usePolling(loadOrders, 10000);
 
   useEffect(() => {
-    fetch("/api/orders")
-      .then((r) => r.json())
-      .then(setOrders);
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setIsOwner(data?.user?.role === "PROPRIETARIO"));
   }, []);
+
+  async function deleteOrder(order: Order) {
+    const msg = `Tem certeza que deseja excluir a ordem de ${order.vehicle.plate} (${order.client.name})?\n\nEsta ação remove a ordem dos relatórios, financeiro e base de dados. Não pode ser desfeita.`;
+    if (!confirm(msg)) return;
+
+    setDeletingId(order.id);
+    const res = await fetch(`/api/orders/${order.id}`, { method: "DELETE" });
+    setDeletingId(null);
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.error ?? "Erro ao excluir ordem.");
+      return;
+    }
+
+    await loadOrders();
+  }
 
   return (
     <div className="space-y-6">
@@ -54,9 +83,22 @@ export default function OrdensPage() {
               </p>
               <div className="mt-3 flex items-center justify-between gap-2">
                 <span className="text-lg font-bold">{formatCurrency(order.total)}</span>
-                <Link href={`/ordens/${order.id}/comprovante`}>
-                  <Button size="sm">Comprovante</Button>
-                </Link>
+                <div className="flex gap-2">
+                  <Link href={`/ordens/${order.id}/comprovante`}>
+                    <Button size="sm">Comprovante</Button>
+                  </Link>
+                  {isOwner && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-red-600 hover:bg-red-50"
+                      disabled={deletingId === order.id}
+                      onClick={() => void deleteOrder(order)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -96,9 +138,22 @@ export default function OrdensPage() {
                   </td>
                   <td className="py-3 pr-4">{formatCurrency(order.total)}</td>
                   <td className="py-3">
-                    <Link href={`/ordens/${order.id}/comprovante`}>
-                      <Button size="sm">Imprimir comprovante</Button>
-                    </Link>
+                    <div className="flex gap-2">
+                      <Link href={`/ordens/${order.id}/comprovante`}>
+                        <Button size="sm">Comprovante</Button>
+                      </Link>
+                      {isOwner && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:bg-red-50"
+                          disabled={deletingId === order.id}
+                          onClick={() => void deleteOrder(order)}
+                        >
+                          {deletingId === order.id ? "..." : "Excluir"}
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

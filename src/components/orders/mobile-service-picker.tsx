@@ -3,6 +3,7 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
+  isLavagemCatalogService,
   PRIMARY_WORKFLOW_TASKS,
   type ExtraServiceState,
   type WorkflowTaskKey,
@@ -72,6 +73,60 @@ function EmployeePills({
   );
 }
 
+function ServiceRow({
+  service,
+  state,
+  price,
+  assigned,
+  onToggle,
+  onSelectEmployee,
+  employees,
+}: {
+  service: Service;
+  state: ExtraServiceState;
+  price: number;
+  assigned: string | null;
+  onToggle: () => void;
+  onSelectEmployee: (id: string) => void;
+  employees: Employee[];
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border bg-white transition-colors",
+        state.selected ? "border-sky-300 ring-1 ring-sky-100" : "border-slate-200"
+      )}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left touch-manipulation"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-900">{service.name}</p>
+          {state.selected && assigned && (
+            <p className="text-xs text-sky-700">Responsável: {assigned}</p>
+          )}
+        </div>
+        <span className="shrink-0 text-sm font-semibold text-slate-600">
+          {formatCurrency(price)}
+        </span>
+      </button>
+
+      {state.selected && (
+        <div className="border-t border-slate-100 px-4 pb-4">
+          <p className="pt-2 text-xs text-slate-500">Quem vai executar?</p>
+          <EmployeePills
+            employees={employees}
+            selectedId={state.employeeId}
+            onSelect={onSelectEmployee}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MobileServicePicker({
   services,
   employees,
@@ -83,6 +138,9 @@ export function MobileServicePicker({
   onExtrasChange,
   onShowMoreOptionsChange,
 }: MobileServicePickerProps) {
+  const washServices = services.filter((s) => isLavagemCatalogService(s.name));
+  const otherServices = services.filter((s) => !isLavagemCatalogService(s.name));
+
   function toggleWorkflowRow(key: WorkflowTaskKey) {
     const current = workflow[key];
     onWorkflowChange({
@@ -131,113 +189,52 @@ export function MobileServicePicker({
     employees.find((e) => e.id === id)?.name ?? null;
 
   return (
-    <div className="space-y-3">
-      {PRIMARY_WORKFLOW_TASKS.map(({ key, label }) => {
-        const task = workflow[key];
-        const assigned = employeeName(task.employeeId);
-
-        return (
-          <div
-            key={key}
-            className={cn(
-              "rounded-xl border bg-white transition-colors",
-              task.employeeId ? "border-sky-300 ring-1 ring-sky-100" : "border-slate-200"
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => toggleWorkflowRow(key)}
-              className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left touch-manipulation"
-            >
-              <div className="min-w-0">
-                <p className="text-base font-bold uppercase tracking-wide text-slate-900">
-                  {label}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {assigned
-                    ? `Responsável: ${assigned}`
-                    : "Toque e escolha o funcionário"}
-                </p>
-              </div>
-              {task.open ? (
-                <ChevronUp className="h-5 w-5 shrink-0 text-slate-400" />
-              ) : (
-                <ChevronDown className="h-5 w-5 shrink-0 text-slate-400" />
-              )}
-            </button>
-
-            {task.open && (
-              <div className="border-t border-slate-100 px-4 pb-4">
-                <EmployeePills
-                  employees={employees}
-                  selectedId={task.employeeId}
-                  onSelect={(id) => setWorkflowEmployee(key, id)}
-                />
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      <button
-        type="button"
-        onClick={() => onShowMoreOptionsChange(!showMoreOptions)}
-        className="flex w-full items-center justify-between rounded-xl border border-dashed border-sky-300 bg-sky-50/50 px-4 py-3.5 text-left touch-manipulation active:bg-sky-50"
-      >
-        <span className="text-sm font-semibold text-sky-800">
-          {showMoreOptions ? "− Ocultar opções de lavagem" : "+ Opções de lavagem"}
-        </span>
-        {showMoreOptions ? (
-          <ChevronUp className="h-5 w-5 text-sky-600" />
-        ) : (
-          <ChevronDown className="h-5 w-5 text-sky-600" />
-        )}
-      </button>
-
-      {showMoreOptions && (
-        <div className="space-y-2">
-          {services.map((service) => {
-            const state = extras[service.id] ?? {
-              selected: false,
-              employeeId: null,
-              open: false,
-            };
-            const price = servicePrice(service, vehicleType);
-            const assigned = employeeName(state.employeeId);
+    <div className="space-y-4">
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Equipe (lavagem · aspiração · secagem)
+        </p>
+        <div className="space-y-3">
+          {PRIMARY_WORKFLOW_TASKS.map(({ key, label }) => {
+            const task = workflow[key];
+            const assigned = employeeName(task.employeeId);
 
             return (
               <div
-                key={service.id}
+                key={key}
                 className={cn(
                   "rounded-xl border bg-white transition-colors",
-                  state.selected
-                    ? "border-sky-300 ring-1 ring-sky-100"
-                    : "border-slate-200"
+                  task.employeeId ? "border-sky-300 ring-1 ring-sky-100" : "border-slate-200"
                 )}
               >
                 <button
                   type="button"
-                  onClick={() => toggleExtra(service.id)}
-                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left touch-manipulation"
+                  onClick={() => toggleWorkflowRow(key)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left touch-manipulation"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-900">{service.name}</p>
-                    {state.selected && assigned && (
-                      <p className="text-xs text-sky-700">Responsável: {assigned}</p>
-                    )}
+                  <div className="min-w-0">
+                    <p className="text-base font-bold uppercase tracking-wide text-slate-900">
+                      {label}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {assigned
+                        ? `Responsável: ${assigned}`
+                        : "Toque e escolha o funcionário"}
+                    </p>
                   </div>
-                  <span className="shrink-0 text-sm font-semibold text-slate-600">
-                    {formatCurrency(price)}
-                  </span>
+                  {task.open ? (
+                    <ChevronUp className="h-5 w-5 shrink-0 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5 shrink-0 text-slate-400" />
+                  )}
                 </button>
 
-                {state.selected && (
+                {task.open && (
                   <div className="border-t border-slate-100 px-4 pb-4">
-                    <p className="pt-2 text-xs text-slate-500">Quem vai executar?</p>
                     <EmployeePills
                       employees={employees}
-                      selectedId={state.employeeId}
-                      onSelect={(id) => setExtraEmployee(service.id, id)}
+                      selectedId={task.employeeId}
+                      onSelect={(id) => setWorkflowEmployee(key, id)}
                     />
                   </div>
                 )}
@@ -245,6 +242,85 @@ export function MobileServicePicker({
             );
           })}
         </div>
+      </div>
+
+      <div>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-sky-700">
+          Tipo de lavagem *
+        </p>
+        <p className="mb-3 text-xs text-slate-500">
+          Obrigatório — selecione o serviço e o responsável para calcular o valor.
+        </p>
+        <div className="space-y-2">
+          {washServices.length === 0 ? (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Nenhum serviço de lavagem cadastrado. Cadastre em Serviços.
+            </p>
+          ) : (
+            washServices.map((service) => {
+              const state = extras[service.id] ?? {
+                selected: false,
+                employeeId: null,
+                open: false,
+              };
+              return (
+                <ServiceRow
+                  key={service.id}
+                  service={service}
+                  state={state}
+                  price={servicePrice(service, vehicleType)}
+                  assigned={employeeName(state.employeeId)}
+                  onToggle={() => toggleExtra(service.id)}
+                  onSelectEmployee={(id) => setExtraEmployee(service.id, id)}
+                  employees={employees}
+                />
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {otherServices.length > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() => onShowMoreOptionsChange(!showMoreOptions)}
+            className="flex w-full items-center justify-between rounded-xl border border-dashed border-slate-300 bg-slate-50/50 px-4 py-3.5 text-left touch-manipulation active:bg-slate-50"
+          >
+            <span className="text-sm font-semibold text-slate-700">
+              {showMoreOptions ? "− Ocultar serviços extras" : "+ Serviços extras"}
+            </span>
+            {showMoreOptions ? (
+              <ChevronUp className="h-5 w-5 text-slate-500" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-slate-500" />
+            )}
+          </button>
+
+          {showMoreOptions && (
+            <div className="space-y-2">
+              {otherServices.map((service) => {
+                const state = extras[service.id] ?? {
+                  selected: false,
+                  employeeId: null,
+                  open: false,
+                };
+                return (
+                  <ServiceRow
+                    key={service.id}
+                    service={service}
+                    state={state}
+                    price={servicePrice(service, vehicleType)}
+                    assigned={employeeName(state.employeeId)}
+                    onToggle={() => toggleExtra(service.id)}
+                    onSelectEmployee={(id) => setExtraEmployee(service.id, id)}
+                    employees={employees}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

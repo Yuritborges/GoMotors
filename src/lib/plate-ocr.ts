@@ -210,7 +210,7 @@ export async function buildOcrImageVariants(file: Blob): Promise<Blob[]> {
   return variants;
 }
 
-const PSM_MODES = ["SPARSE_TEXT", "SINGLE_BLOCK", "AUTO"] as const;
+const PSM_MODES = ["SPARSE_TEXT", "SINGLE_BLOCK", "AUTO", "SINGLE_LINE"] as const;
 
 /** Roda OCR em vários recortes e modos até encontrar uma placa válida. */
 export async function recognizePlateFromImage(
@@ -262,8 +262,37 @@ export async function recognizePlateFromImage(
   return best;
 }
 
-/** @deprecated Use recognizePlateFromImage */
-export async function preprocessPlateImage(file: Blob): Promise<Blob> {
-  const variants = await buildOcrImageVariants(file);
-  return variants[1] ?? file;
+/** Gera variantes comuns de confusão OCR para busca no banco. */
+export function generatePlateLookupVariants(plate: string): string[] {
+  const base = formatPlate(plate).slice(0, 7);
+  if (base.length < 7) return [base];
+
+  const variants = new Set<string>([base, normalizePlateGuess(base)]);
+
+  const swaps: [string, string][] = [
+    ["O", "0"],
+    ["0", "O"],
+    ["I", "1"],
+    ["1", "I"],
+    ["S", "5"],
+    ["5", "S"],
+    ["B", "8"],
+    ["8", "B"],
+    ["G", "6"],
+    ["6", "G"],
+    ["Z", "2"],
+    ["2", "Z"],
+  ];
+
+  for (let i = 0; i < base.length; i++) {
+    for (const [from, to] of swaps) {
+      if (base[i] === from) {
+        const next = base.slice(0, i) + to + base.slice(i + 1);
+        variants.add(next);
+        variants.add(normalizePlateGuess(next));
+      }
+    }
+  }
+
+  return [...variants];
 }

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { endOfDay, startOfDay } from "@/lib/utils";
 import { ORDER_STATUS_LABELS } from "@/lib/constants";
+import { BLOCKING_ORDER_STATUSES } from "@/lib/order-workflow";
+import { generatePlateLookupVariants } from "@/lib/plate-ocr";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -15,14 +17,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Placa inválida" }, { status: 400 });
   }
 
-  const vehicle = await prisma.vehicle.findUnique({
+  let vehicle = await prisma.vehicle.findUnique({
     where: { plate },
     include: {
       client: true,
       orders: {
         where: {
           entryAt: { gte: startOfDay(), lte: endOfDay() },
-          status: { notIn: ["ENTREGUE", "CANCELADO"] },
+          status: { in: [...BLOCKING_ORDER_STATUSES] },
         },
         orderBy: { entryAt: "desc" },
         take: 1,
@@ -32,6 +34,32 @@ export async function GET(request: Request) {
   });
 
   if (!vehicle) {
+    const variants = generatePlateLookupVariants(plate);
+    for (const variant of variants) {
+      if (variant === plate) continue;
+      const match = await prisma.vehicle.findUnique({
+        where: { plate: variant },
+        include: {
+          client: true,
+          orders: {
+            where: {
+              entryAt: { gte: startOfDay(), lte: endOfDay() },
+              status: { in: [...BLOCKING_ORDER_STATUSES] },
+            },
+            orderBy: { entryAt: "desc" },
+            take: 1,
+            include: { items: true },
+          },
+        },
+      });
+      if (match) {
+        vehicle = match;
+        break;
+      }
+    }
+  }
+
+  if (!vehicle) {
     return NextResponse.json({ found: false, plate });
   }
 
@@ -39,7 +67,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     found: true,
-    plate,
+    plate: vehicle.plate,
     vehicle: {
       id: vehicle.id,
       plate: vehicle.plate,

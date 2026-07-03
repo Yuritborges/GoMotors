@@ -37,11 +37,22 @@ export async function GET(request: Request) {
   const totalSold = paidOrders.reduce((sum, o) => sum + o.total, 0);
   const totalDiscounts = orders.reduce((sum, o) => sum + o.discount, 0);
   const pendingAmount = pendingOrders.reduce((sum, o) => sum + o.total, 0);
+  const averageTicket = paidOrders.length > 0 ? totalSold / paidOrders.length : 0;
 
   const expenses = await prisma.expense.findMany({
     where: { date: { gte: start, lte: end } },
   });
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+  const ordersWithVehicle = await prisma.serviceOrder.findMany({
+    where: {
+      entryAt: { gte: start, lte: end },
+      status: { not: "CANCELADO" },
+      paymentStatus: "PENDENTE",
+    },
+    include: { vehicle: true, client: true },
+    orderBy: { entryAt: "desc" },
+  });
 
   return NextResponse.json({
     date: today.toISOString(),
@@ -49,11 +60,19 @@ export async function GET(request: Request) {
     totalDiscounts,
     pendingAmount,
     vehicleCount: orders.length,
+    paidCount: paidOrders.length,
     pendingPaymentCount: pendingOrders.length,
+    averageTicket,
     byPaymentMethod: byMethod,
     totalExpenses,
     estimatedResult: totalSold - totalExpenses,
-    orders,
+    pendingOrders: ordersWithVehicle.map((o) => ({
+      id: o.id,
+      total: o.total,
+      status: o.status,
+      plate: o.vehicle.plate,
+      clientName: o.client.name,
+    })),
   });
   } catch (error) {
     return handleAuthError(error);

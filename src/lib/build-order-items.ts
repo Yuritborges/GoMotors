@@ -1,6 +1,4 @@
 import {
-  findDefaultLavagemServiceId,
-  isLavagemCatalogService,
   PRIMARY_WORKFLOW_TASKS,
   type WorkflowTaskKey,
 } from "@/lib/order-workflow";
@@ -38,35 +36,7 @@ export function buildOrderItems(params: {
     ([, state]) => state.selected && state.employeeId
   );
 
-  const pricedLavagemExtra = selectedExtras.find(([id]) => {
-    const svc = serviceById.get(id);
-    return svc && isLavagemCatalogService(svc.name);
-  });
-
-  const lavagemEmployee = workflow.lavagem.employeeId;
-
-  if (lavagemEmployee && !pricedLavagemExtra) {
-    const defaultId = findDefaultLavagemServiceId(services);
-    const defaultSvc = defaultId ? serviceById.get(defaultId) : null;
-    if (defaultSvc) {
-      items.push({
-        serviceId: defaultSvc.id,
-        serviceName: defaultSvc.name,
-        price: priceFor(defaultSvc, vehicleType),
-        employeeId: lavagemEmployee,
-      });
-    } else {
-      items.push({
-        serviceId: null,
-        serviceName: "Lavagem",
-        price: 0,
-        employeeId: lavagemEmployee,
-      });
-    }
-  }
-
   for (const { key, label } of PRIMARY_WORKFLOW_TASKS) {
-    if (key === "lavagem") continue;
     const employeeId = workflow[key].employeeId;
     if (!employeeId) continue;
     items.push({
@@ -80,13 +50,6 @@ export function buildOrderItems(params: {
   for (const [serviceId, state] of selectedExtras) {
     const svc = serviceById.get(serviceId);
     if (!svc || !state.employeeId) continue;
-
-    const isDefaultLavagem =
-      lavagemEmployee &&
-      !pricedLavagemExtra &&
-      svc.id === findDefaultLavagemServiceId(services);
-
-    if (isDefaultLavagem && items.some((i) => i.serviceId === svc.id)) continue;
 
     items.push({
       serviceId: svc.id,

@@ -15,7 +15,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { MobileServicePicker } from "@/components/orders/mobile-service-picker";
 import { buildOrderItems, orderItemsSubtotal } from "@/lib/build-order-items";
 import {
-  countAssignments,
+  countWorkflowAssignments,
+  hasSelectedWashService,
   type ExtraServiceState,
   type WorkflowTaskKey,
   type WorkflowTaskState,
@@ -251,20 +252,24 @@ export default function NovaOrdemPage() {
 
   const total = Math.max(subtotal - Number(discount || 0), 0);
 
-  const assignmentCount = countAssignments(workflow, extras);
+  const assignmentCount = countWorkflowAssignments(workflow);
+  const washSelected = hasSelectedWashService(services, extras);
   const extrasMissingEmployee = Object.values(extras).some(
     (e) => e.selected && !e.employeeId
   );
 
   const plateReady = Boolean(clientId && vehicleId && !plateLookup?.activeOrder);
+  const servicesReady = washSelected && !extrasMissingEmployee;
   const canSubmit =
     plateReady &&
+    servicesReady &&
     assignmentCount > 0 &&
-    !extrasMissingEmployee &&
+    subtotal > 0 &&
     !saving &&
     !plateLookup?.activeOrder;
 
   const showMobileSummary = plateReady && plateLookup?.found;
+  const showPaymentSection = plateReady && servicesReady;
 
   const clientOptions = useMemo(
     () =>
@@ -321,7 +326,8 @@ export default function NovaOrdemPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!clientId || !vehicleId || orderItems.length === 0) return;
+    if (!clientId || !vehicleId || orderItems.length === 0 || subtotal <= 0) return;
+    if (!hasSelectedWashService(services, extras)) return;
     if (plateLookup?.activeOrder) return;
 
     const workflowTasks = (
@@ -356,7 +362,7 @@ export default function NovaOrdemPage() {
     if (res.ok && order.id) {
       router.push(`/ordens/${order.id}/comprovante`);
     } else {
-      router.push("/painel");
+      alert(order.error ?? "Erro ao registrar ordem.");
     }
   }
 
@@ -467,10 +473,14 @@ export default function NovaOrdemPage() {
 
           {plateLookup && !plateLookup.found && plateQuery.length >= 6 && !plateLoading && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Placa não cadastrada.{" "}
+              <p>Placa não encontrada no cadastro.</p>
+              <p className="mt-1 text-xs">
+                Se você fotografou a placa, confira se os caracteres estão corretos (O/0, I/1) e
+                tente buscar de novo.
+              </p>
               <Link
                 href={`/clientes?novo=1&placa=${encodeURIComponent(plateQuery)}`}
-                className="font-semibold underline"
+                className="mt-2 inline-block font-semibold underline"
               >
                 Cadastro rápido
               </Link>
@@ -511,7 +521,17 @@ export default function NovaOrdemPage() {
             />
             {extrasMissingEmployee && (
               <p className="mt-3 text-sm text-amber-800">
-                Escolha o funcionário para cada serviço marcado em opções extras.
+                Escolha o funcionário para cada serviço marcado.
+              </p>
+            )}
+            {plateReady && !washSelected && (
+              <p className="mt-3 text-sm text-amber-800">
+                Selecione o tipo de lavagem e o responsável para continuar.
+              </p>
+            )}
+            {plateReady && washSelected && assignmentCount === 0 && (
+              <p className="mt-3 text-sm text-amber-800">
+                Atribua pelo menos um funcionário às etapas de lavagem, aspiração ou secagem.
               </p>
             )}
           </CardContent>
@@ -558,6 +578,7 @@ export default function NovaOrdemPage() {
           </CardContent>
         </Card>
 
+        {showPaymentSection && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base sm:text-lg">Pagamento</CardTitle>
@@ -645,7 +666,9 @@ export default function NovaOrdemPage() {
             </div>
           </CardContent>
         </Card>
+        )}
 
+        {showPaymentSection && (
         <div className="hidden flex-col gap-3 sm:flex sm:flex-row">
           <Button type="submit" className="w-full sm:w-auto" disabled={!canSubmit}>
             {saving ? "Salvando..." : "Registrar ordem"}
@@ -659,15 +682,19 @@ export default function NovaOrdemPage() {
             Cancelar
           </Button>
         </div>
+        )}
       </form>
 
+      {showPaymentSection && (
       <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-40 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs text-slate-500">
-              {assignmentCount === 0
-                ? "Marque lavagem, aspiração ou secagem"
-                : `${assignmentCount} etapa(s) / serviço(s)`}
+              {!washSelected
+                ? "Selecione o tipo de lavagem"
+                : assignmentCount === 0
+                  ? "Atribua a equipe (lavagem/aspiração/secagem)"
+                  : `${assignmentCount} etapa(s) na equipe`}
             </p>
             <p className="text-lg font-bold text-slate-900">{formatCurrency(total)}</p>
           </div>
@@ -681,6 +708,7 @@ export default function NovaOrdemPage() {
           </Button>
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
 } from "@/lib/build-order-items";
 import { endOfDay, startOfDay } from "@/lib/utils";
 import type { WorkflowTaskKey } from "@/lib/order-workflow";
+import { hasSelectedWashService } from "@/lib/order-workflow";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -95,6 +96,13 @@ export async function POST(request: Request) {
     if (items.length === 0) {
       return NextResponse.json(
         { error: "Selecione ao menos uma etapa ou serviço com funcionário." },
+        { status: 400 }
+      );
+    }
+
+    if (!hasSelectedWashService(services, extras)) {
+      return NextResponse.json(
+        { error: "Selecione o tipo de lavagem antes de registrar a ordem." },
         { status: 400 }
       );
     }

@@ -58,3 +58,28 @@ export function countAssignments(
   }
   return n;
 }
+
+export function countWorkflowAssignments(
+  workflow: Record<WorkflowTaskKey, WorkflowTaskState>
+): number {
+  return Object.values(workflow).filter((t) => t.employeeId).length;
+}
+
+export function hasSelectedWashService(
+  services: { id: string; name: string }[],
+  extras: Record<string, ExtraServiceState>
+): boolean {
+  const byId = new Map(services.map((s) => [s.id, s]));
+  return Object.entries(extras).some(([id, state]) => {
+    if (!state.selected || !state.employeeId) return false;
+    const svc = byId.get(id);
+    return svc ? isLavagemCatalogService(svc.name) : false;
+  });
+}
+
+/** Ordens ativas que impedem nova OS no mesmo dia (exceto pronto/entregue). */
+export const BLOCKING_ORDER_STATUSES = [
+  "AGUARDANDO",
+  "EM_LAVAGEM",
+  "FINALIZACAO",
+] as const;

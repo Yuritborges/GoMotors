@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { handleAuthError, requireOwner } from "@/lib/auth";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -62,4 +63,38 @@ export async function PATCH(request: Request, { params }: Params) {
   });
 
   return NextResponse.json(order);
+}
+
+export async function DELETE(_request: Request, { params }: Params) {
+  try {
+    await requireOwner();
+    const { id } = await params;
+
+    const existing = await prisma.serviceOrder.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Ordem não encontrada" }, { status: 404 });
+    }
+
+    await prisma.serviceOrder.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return handleAuthError(error);
+  }
+}
+
+export async function DELETE(_request: Request, { params }: Params) {
+  try {
+    await requireOwner();
+    const { id } = await params;
+
+    const existing = await prisma.serviceOrder.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ error: "Ordem não encontrada" }, { status: 404 });
+    }
+
+    await prisma.serviceOrder.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return handleAuthError(error);
+  }
 }
