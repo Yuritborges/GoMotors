@@ -348,6 +348,58 @@ const TWO_LINE_BOTTOM_REGIONS: CropRegion[] = [
   { x: 0.02, y: 0.45, w: 0.96, h: 0.4 },
 ];
 
+/** Placa Mercosul em duas linhas (moto): SVP + 6A10 → SVP6A10 — ignora QR à esquerda */
+const MOTO_TOP_REGIONS: CropRegion[] = [
+  { x: 0.26, y: 0.04, w: 0.7, h: 0.38 },
+  { x: 0.22, y: 0.06, w: 0.74, h: 0.34 },
+  { x: 0.3, y: 0.08, w: 0.65, h: 0.32 },
+];
+
+const MOTO_BOTTOM_REGIONS: CropRegion[] = [
+  { x: 0.2, y: 0.48, w: 0.76, h: 0.42 },
+  { x: 0.16, y: 0.52, w: 0.8, h: 0.38 },
+  { x: 0.24, y: 0.5, w: 0.72, h: 0.4 },
+];
+
+function letterTriples(raw: string): string[] {
+  const letters = raw.toUpperCase().replace(/[^A-Z]/g, "");
+  const out = new Set<string>();
+  if (letters.length === 3) out.add(letters);
+  for (let i = 0; i <= letters.length - 3; i++) {
+    out.add(letters.slice(i, i + 3));
+  }
+  return [...out];
+}
+
+function alnumQuads(raw: string): string[] {
+  const alnum = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const out = new Set<string>();
+  if (alnum.length === 4) out.add(alnum);
+  for (let i = 0; i <= alnum.length - 4; i++) {
+    out.add(alnum.slice(i, i + 4));
+  }
+  return [...out];
+}
+
+function recordMotoMergeHits(
+  hits: Map<string, number>,
+  topRaw: string,
+  bottomRaw: string,
+  bonus: number
+) {
+  for (const plate of mergeMercosulTwoLines(topRaw, bottomRaw)) {
+    hits.set(plate, (hits.get(plate) ?? 0) + bonus);
+  }
+  for (const head of letterTriples(topRaw)) {
+    for (const tail of alnumQuads(bottomRaw)) {
+      const merged = normalizePlateGuess(head + tail);
+      if (isValidBrazilianPlate(merged)) {
+        hits.set(merged, (hits.get(merged) ?? 0) + bonus);
+      }
+    }
+  }
+}
+
 /** Combina linha de cima (letras) + linha de baixo (números/letras). */
 export function mergeMercosulTwoLines(topRaw: string, bottomRaw: string): string[] {
   const out = new Set<string>();
@@ -383,7 +435,8 @@ async function ocrBitmapRegion(
   Tesseract: any,
   bitmap: ImageBitmap,
   region: CropRegion,
-  enhance: EnhanceMode
+  enhance: EnhanceMode,
+  whitelist = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 ): Promise<string> {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -391,10 +444,131 @@ async function ocrBitmapRegion(
 
   drawRegion(ctx, bitmap, region, 2800, enhance);
   await worker.setParameters({
+    tessedit_char_whitelist: whitelist,
     tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
   });
   const { data } = await worker.recognize(canvas);
   return data.text ?? "";
+}
+
+async function ocrBlobLine(
+  worker: OcrWorker,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Tesseract: any,
+  blob: Blob,
+  whitelist: string,
+  enhance: EnhanceMode
+): Promise<string> {
+  const bitmap = await loadImageBitmap(blob);
+  try {
+    return await ocrBitmapRegion(
+      worker,
+      Tesseract,
+      bitmap,
+      { x: 0, y: 0, w: 1, h: 1 },
+      enhance,
+      whitelist
+    );
+  } finally {
+    bitmap.close();
+  }
+}
+
+async function runMotoPlatePass(
+  worker: OcrWorker,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Tesseract: any,
+  bitmap: ImageBitmap,
+  hits: Map<string, number>
+) {
+  const lettersOnly = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const alnum = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+  for (const topRegion of MOTO_TOP_REGIONS) {
+    for (const bottomRegion of MOTO_BOTTOM_REGIONS) {
+      for (const enhance of ["strong", "soft"] as const) {
+        const topText = await ocrBitmapRegion(
+          worker,
+          Tesseract,
+          bitmap,
+          topRegion,
+          enhance,
+          lettersOnly
+        );
+        const bottomText = await ocrBitmapRegion(
+          worker,
+          Tesseract,
+          bitmap,
+          bottomRegion,
+          enhance,
+          alnum
+        );
+
+        recordMotoMergeHits(hits, topText, bottomText, 280);
+      }
+    }
+  }
+}
+
+/** OCR dedicado quando câmera captura linha de cima e de baixo separadamente (modo moto). */
+export async function recognizeMotoPlateFromLineCrops(
+  topBlob: Blob,
+  bottomBlob: Blob,
+  onProgress?: (pct: number) => void
+): Promise<string[]> {
+  onProgress?.(1);
+
+  const run = async (): Promise<string[]> => {
+    const Tesseract = (await import("tesseract.js")).default;
+    onProgress?.(10);
+
+    const worker = await Tesseract.createWorker("eng", 1, getBrowserTesseractWorkerOptions(onProgress));
+    const hits = new Map<string, number>();
+    const lettersOnly = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const alnum = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+    try {
+      for (const enhance of ["strong", "soft"] as const) {
+        onProgress?.(enhance === "strong" ? 30 : 60);
+        const topText = await ocrBlobLine(worker, Tesseract, topBlob, lettersOnly, enhance);
+        const bottomText = await ocrBlobLine(worker, Tesseract, bottomBlob, alnum, enhance);
+        recordMotoMergeHits(hits, topText, bottomText, 450);
+        collectHitsFromOcr(topText, 50, hits, 40);
+        collectHitsFromOcr(bottomText, 50, hits, 40);
+      }
+    } finally {
+      await worker.terminate();
+    }
+
+    onProgress?.(100);
+    return [...hits.entries()]
+      .sort((a, b) => b[1] + bannerNoisePenalty(b[0]) - (a[1] + bannerNoisePenalty(a[0])))
+      .map(([plate]) => plate);
+  };
+
+  return withTimeout(
+    run(),
+    OCR_TIMEOUT_MS,
+    "O leitor de placa demorou demais. Tente outra foto ou digite a placa."
+  );
+}
+
+async function ocrBitmapRegionLegacy(
+  worker: OcrWorker,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Tesseract: any,
+  bitmap: ImageBitmap,
+  region: CropRegion,
+  enhance: EnhanceMode
+): Promise<string> {
+  return ocrBitmapRegion(
+    worker,
+    Tesseract,
+    bitmap,
+    region,
+    enhance,
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  );
 }
 
 async function runMercosulCharBandPass(
@@ -408,7 +582,7 @@ async function runMercosulCharBandPass(
 
   for (const region of regions) {
     for (const enhance of ["strong", "soft"] as const) {
-      const text = await ocrBitmapRegion(worker, Tesseract, bitmap, region, enhance);
+      const text = await ocrBitmapRegionLegacy(worker, Tesseract, bitmap, region, enhance);
 
       for (const plate of extractAllPlateCandidates(text)) {
         const score = 200 + bannerNoisePenalty(plate);
@@ -430,8 +604,8 @@ async function runTwoLineMercosulPass(
     for (const bottomRegion of TWO_LINE_BOTTOM_REGIONS) {
       for (const enhance of ["strong", "soft"] as const) {
         const [topText, bottomText] = await Promise.all([
-          ocrBitmapRegion(worker, Tesseract, bitmap, topRegion, enhance),
-          ocrBitmapRegion(worker, Tesseract, bitmap, bottomRegion, enhance),
+          ocrBitmapRegionLegacy(worker, Tesseract, bitmap, topRegion, enhance),
+          ocrBitmapRegionLegacy(worker, Tesseract, bitmap, bottomRegion, enhance),
         ]);
 
         for (const plate of mergeMercosulTwoLines(topText, bottomText)) {
@@ -530,11 +704,18 @@ export async function recognizePlateCandidatesFromImage(
 
     try {
       onProgress?.(12);
-      await runMercosulCharBandPass(worker, Tesseract, bitmap, hits);
-      onProgress?.(20);
-
       const aspect = bitmap.width / bitmap.height;
-      if (aspect < 1.45) {
+      const looksLikeMoto = aspect < 2.4;
+
+      if (looksLikeMoto) {
+        await runMotoPlatePass(worker, Tesseract, bitmap, hits);
+        onProgress?.(22);
+      } else {
+        await runMercosulCharBandPass(worker, Tesseract, bitmap, hits);
+        onProgress?.(20);
+      }
+
+      if (looksLikeMoto) {
         await runTwoLineMercosulPass(worker, Tesseract, bitmap, hits);
       }
       onProgress?.(28);

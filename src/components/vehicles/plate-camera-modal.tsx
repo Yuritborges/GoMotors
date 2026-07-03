@@ -8,22 +8,24 @@ import { Button } from "@/components/ui/button";
 
 type FrameMode = "carro" | "moto";
 
+export type PlateCaptureResult =
+  | { type: "single"; file: File }
+  | { type: "moto"; top: Blob; bottom: Blob; preview: File };
+
 type PlateCameraModalProps = {
   open: boolean;
   onClose: () => void;
-  onCapture: (file: File) => void;
+  onCapture: (result: PlateCaptureResult) => void;
 };
 
-const FRAME_CONFIG: Record<FrameMode, { aspect: number; label: string; hint: string }> = {
+const FRAME_CONFIG: Record<FrameMode, { label: string; hint: string }> = {
   carro: {
-    aspect: 3.8,
     label: "Carro",
     hint: "Enquadre só os caracteres (evite a tarja azul BRASIL)",
   },
   moto: {
-    aspect: 1.55,
     label: "Moto",
-    hint: "Enquadre as duas linhas da placa dentro da moldura",
+    hint: "Duas molduras: letras em cima (SVP) e números embaixo (6A10). Evite o QR Code.",
   },
 };
 
@@ -75,13 +77,55 @@ async function captureFramedRegion(
   });
 }
 
+async function stitchMotoPreview(top: Blob, bottom: Blob): Promise<File> {
+  const [topUrl, bottomUrl] = [URL.createObjectURL(top), URL.createObjectURL(bottom)];
+  try {
+    const [topImg, bottomImg] = await Promise.all([
+      loadImage(topUrl),
+      loadImage(bottomUrl),
+    ]);
+    const gap = 8;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(topImg.width, bottomImg.width);
+    canvas.height = topImg.height + gap + bottomImg.height;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(topImg, 0, 0);
+    ctx.drawImage(bottomImg, 0, topImg.height + gap);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error("Falha na prévia"))),
+        "image/jpeg",
+        0.92
+      );
+    });
+    return new File([blob], `placa-moto-${Date.now()}.jpg`, { type: "image/jpeg" });
+  } finally {
+    URL.revokeObjectURL(topUrl);
+    URL.revokeObjectURL(bottomUrl);
+  }
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Falha ao montar prévia"));
+    img.src = src;
+  });
+}
+
 export function PlateCameraModal({ open, onClose, onCapture }: PlateCameraModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  const topFrameRef = useRef<HTMLDivElement>(null);
+  const bottomFrameRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const [frameMode, setFrameMode] = useState<FrameMode>("carro");
+  const [frameMode, setFrameMode] = useState<FrameMode>("moto");
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
@@ -148,16 +192,30 @@ export function PlateCameraModal({ open, onClose, onCapture }: PlateCameraModalP
   async function handleCapture() {
     const video = videoRef.current;
     const container = containerRef.current;
-    const frame = frameRef.current;
-    if (!video || !container || !frame || !ready) return;
+    if (!video || !container || !ready) return;
 
     setCapturing(true);
     setError(null);
 
     try {
-      const blob = await captureFramedRegion(video, container, frame);
-      const file = new File([blob], `placa-${Date.now()}.jpg`, { type: "image/jpeg" });
-      onCapture(file);
+      if (frameMode === "moto") {
+        const topFrame = topFrameRef.current;
+        const bottomFrame = bottomFrameRef.current;
+        if (!topFrame || !bottomFrame) return;
+
+        const [top, bottom] = await Promise.all([
+          captureFramedRegion(video, container, topFrame),
+          captureFramedRegion(video, container, bottomFrame),
+        ]);
+        const preview = await stitchMotoPreview(top, bottom);
+        onCapture({ type: "moto", top, bottom, preview });
+      } else {
+        const frame = frameRef.current;
+        if (!frame) return;
+        const blob = await captureFramedRegion(video, container, frame);
+        const file = new File([blob], `placa-carro-${Date.now()}.jpg`, { type: "image/jpeg" });
+        onCapture({ type: "single", file });
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao capturar foto.");
@@ -185,16 +243,38 @@ export function PlateCameraModal({ open, onClose, onCapture }: PlateCameraModalP
         className="absolute inset-0 h-full w-full object-cover"
       />
 
-      {/* Escurece fora da moldura */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-4">
-        <div
-          ref={frameRef}
-          className="w-[min(92vw,28rem)] max-w-full rounded-xl border-[3px] border-dashed border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.58)]"
-          style={{ aspectRatio: String(frame.aspect) }}
-        />
+        {frameMode === "moto" ? (
+          <div className="flex w-[min(88vw,22rem)] flex-col gap-3">
+            <div
+              ref={topFrameRef}
+              className="relative rounded-xl border-[3px] border-dashed border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.58)]"
+              style={{ aspectRatio: "3.4" }}
+            >
+              <span className="absolute -top-6 left-0 text-xs font-medium text-white drop-shadow">
+                Letras (ex: SVP)
+              </span>
+            </div>
+            <div
+              ref={bottomFrameRef}
+              className="relative rounded-xl border-[3px] border-dashed border-white"
+              style={{ aspectRatio: "3.2" }}
+            >
+              <span className="absolute -top-6 left-0 text-xs font-medium text-white drop-shadow">
+                Números (ex: 6A10)
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div
+            ref={frameRef}
+            className="w-[min(92vw,28rem)] max-w-full rounded-xl border-[3px] border-dashed border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.58)]"
+            style={{ aspectRatio: "3.8" }}
+          />
+        )}
       </div>
 
-      <div className="relative z-10 flex flex-col justify-between safe-area-inset min-h-0 flex-1 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-lg font-semibold text-white drop-shadow-md">Enquadre a placa</p>
@@ -203,7 +283,7 @@ export function PlateCameraModal({ open, onClose, onCapture }: PlateCameraModalP
           <button
             type="button"
             onClick={onClose}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur touch-manipulation"
+            className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-black/40 text-white backdrop-blur"
             aria-label="Fechar câmera"
           >
             <X className="h-6 w-6" />
@@ -217,10 +297,8 @@ export function PlateCameraModal({ open, onClose, onCapture }: PlateCameraModalP
               type="button"
               onClick={() => setFrameMode(mode)}
               className={cn(
-                "rounded-full px-4 py-2 text-sm font-medium touch-manipulation",
-                frameMode === mode
-                  ? "bg-white text-slate-900"
-                  : "text-white/90"
+                "touch-manipulation rounded-full px-4 py-2 text-sm font-medium",
+                frameMode === mode ? "bg-white text-slate-900" : "text-white/90"
               )}
             >
               {FRAME_CONFIG[mode].label}

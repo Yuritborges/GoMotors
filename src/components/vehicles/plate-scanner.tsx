@@ -6,9 +6,13 @@ import { cn } from "@/lib/utils";
 import { prepareImageForOcr } from "@/lib/plate-image";
 import {
   generatePlateLookupVariants,
+  recognizeMotoPlateFromLineCrops,
   recognizePlateCandidatesFromImage,
 } from "@/lib/plate-ocr";
-import { PlateCameraModal } from "@/components/vehicles/plate-camera-modal";
+import {
+  PlateCameraModal,
+  type PlateCaptureResult,
+} from "@/components/vehicles/plate-camera-modal";
 
 type PlateScannerProps = {
   onPlateDetected: (plate: string) => void;
@@ -91,6 +95,42 @@ export function PlateScanner({
     [onPlateDetected]
   );
 
+  const processCandidates = useCallback(
+    async (candidates: string[], previewFile: File) => {
+      const url = URL.createObjectURL(previewFile);
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+
+      if (candidates.length === 0) {
+        setLocalError(
+          "Não encontramos a placa na foto. Use o modo Moto na câmera ou digite manualmente."
+        );
+        return;
+      }
+
+      const unique = [...new Set(candidates)].slice(0, 8);
+      const dbSuggestions = new Set<string>();
+
+      for (const candidate of unique) {
+        const { match, suggestions } = await lookupPlateInDb(candidate);
+        if (match) {
+          applyPlate(match);
+          return;
+        }
+        for (const s of suggestions) dbSuggestions.add(s);
+      }
+
+      const pickList = [...new Set([...unique, ...dbSuggestions])].slice(0, 6);
+      setPickCandidates(pickList);
+      setLocalError(
+        "Toque na placa correta. No modo Moto, enquadre letras e números em molduras separadas."
+      );
+    },
+    [applyPlate]
+  );
+
   const processFile = useCallback(
     async (file: File) => {
       if (disabled || phase === "processing") return;
@@ -99,12 +139,6 @@ export function PlateScanner({
       setStatusMessage("Preparando foto…");
       setLocalError(null);
       setPickCandidates([]);
-
-      const url = URL.createObjectURL(file);
-      setPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return url;
-      });
 
       try {
         const prepared = await prepareImageForOcr(file);
@@ -118,30 +152,7 @@ export function PlateScanner({
           }
         });
 
-        if (candidates.length === 0) {
-          setLocalError(
-            "Não encontramos a placa na foto. Enquadre só a placa (duas linhas) ou digite manualmente."
-          );
-          return;
-        }
-
-        const unique = [...new Set(candidates)].slice(0, 8);
-        const dbSuggestions = new Set<string>();
-
-        for (const candidate of unique) {
-          const { match, suggestions } = await lookupPlateInDb(candidate);
-          if (match) {
-            applyPlate(match);
-            return;
-          }
-          for (const s of suggestions) dbSuggestions.add(s);
-        }
-
-        const pickList = [...new Set([...unique, ...dbSuggestions])].slice(0, 6);
-        setPickCandidates(pickList);
-        setLocalError(
-          "Confira a placa abaixo e toque na correta. Evite incluir a tarja azul BRASIL na foto."
-        );
+        await processCandidates(candidates, file);
       } catch (err) {
         setLocalError(toUserMessage(err));
       } finally {
@@ -149,7 +160,48 @@ export function PlateScanner({
         setStatusMessage(null);
       }
     },
-    [applyPlate, disabled, phase]
+    [applyPlate, disabled, phase, processCandidates]
+  );
+
+  const processMotoCapture = useCallback(
+    async (top: Blob, bottom: Blob, preview: File) => {
+      if (disabled || phase === "processing") return;
+
+      setPhase("processing");
+      setStatusMessage("Lendo linha de letras…");
+      setLocalError(null);
+      setPickCandidates([]);
+
+      const url = URL.createObjectURL(preview);
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+
+      try {
+        const candidates = await recognizeMotoPlateFromLineCrops(top, bottom, (pct) => {
+          setStatusMessage(pct < 50 ? "Lendo letras…" : "Lendo números…");
+        });
+        await processCandidates(candidates, preview);
+      } catch (err) {
+        setLocalError(toUserMessage(err));
+      } finally {
+        setPhase("idle");
+        setStatusMessage(null);
+      }
+    },
+    [disabled, phase, processCandidates]
+  );
+
+  const handleCapture = useCallback(
+    (result: PlateCaptureResult) => {
+      if (result.type === "moto") {
+        void processMotoCapture(result.top, result.bottom, result.preview);
+      } else {
+        void processFile(result.file);
+      }
+    },
+    [processFile, processMotoCapture]
   );
 
   const onFileChange = useCallback(
@@ -182,7 +234,7 @@ export function PlateScanner({
       <PlateCameraModal
         open={cameraOpen}
         onClose={() => setCameraOpen(false)}
-        onCapture={(file) => void processFile(file)}
+        onCapture={handleCapture}
       />
 
       {busy ? (
@@ -218,7 +270,7 @@ export function PlateScanner({
       )}
 
       <p className="text-center text-xs text-slate-500 lg:hidden">
-        Ao tirar foto, use a moldura na tela — só os caracteres da placa entram na leitura.
+        Moto: use modo <strong>Moto</strong> na câmera — uma moldura para letras, outra para números.
       </p>
       <p className="hidden text-xs text-slate-500 lg:block">
         Selecione uma foto da placa salva no computador.
