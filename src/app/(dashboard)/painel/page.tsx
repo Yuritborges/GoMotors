@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, ExternalLink, Monitor } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { isOwner } from "@/lib/permissions";
+import type { SessionUser } from "@/lib/auth";
 import { ORDER_STATUS_FLOW, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/constants";
 import { usePolling } from "@/lib/use-polling";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,10 +31,19 @@ type Order = {
 
 export default function PainelPage() {
   const router = useRouter();
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [payOrder, setPayOrder] = useState<Order | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
+
+  const owner = user ? isOwner(user.role) : false;
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setUser(data?.user ?? null));
+  }, []);
 
   const loadOrders = useCallback(async () => {
     const res = await fetch("/api/orders");
@@ -168,12 +179,16 @@ export default function PainelPage() {
 
       <StockAlertsBanner />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className={`grid grid-cols-2 gap-3 ${owner ? "lg:grid-cols-5" : "lg:grid-cols-3"}`}>
         <Stat label="Aguardando" value={stats.aguardando} />
         <Stat label="Em atendimento" value={stats.emAtendimento} />
         <Stat label="Prontos" value={stats.prontos} />
-        <Stat label="Recebido hoje" value={formatCurrency(stats.faturado)} />
-        <Stat label="Pendente" value={formatCurrency(stats.pendente)} />
+        {owner && (
+          <>
+            <Stat label="Recebido hoje" value={formatCurrency(stats.faturado)} />
+            <Stat label="Pendente" value={formatCurrency(stats.pendente)} />
+          </>
+        )}
       </div>
 
       {loading ? (

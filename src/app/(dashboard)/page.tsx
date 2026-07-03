@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getFinanceSummary } from "@/lib/finance";
+import { getSession } from "@/lib/auth";
+import { isOwner } from "@/lib/permissions";
 import { formatCurrency, endOfDay, startOfDay } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,13 +35,23 @@ async function getTodayOps() {
 }
 
 export default async function DashboardPage() {
-  const [finance, today] = await Promise.all([getFinanceSummary(), getTodayOps()]);
+  const session = await getSession();
+  const owner = session ? isOwner(session.role) : false;
+
+  const [finance, today] = await Promise.all([
+    owner ? getFinanceSummary() : null,
+    getTodayOps(),
+  ]);
 
   return (
     <div className="space-y-6 sm:space-y-8">
       <PageHeader
         title="Dashboard"
-        description="Go Motors — visão gerencial em tempo real"
+        description={
+          owner
+            ? "Go Motors — visão gerencial em tempo real"
+            : "Go Motors — operação do dia"
+        }
       >
         <Link href="/ordens/nova" className="w-full sm:w-auto">
           <Button className="w-full sm:w-auto">Nova ordem</Button>
@@ -53,19 +65,28 @@ export default async function DashboardPage() {
 
       <StockAlertsBanner />
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatCard title="Faturamento hoje" value={formatCurrency(today.dailyRevenue)} />
-        <StatCard title="Receita do mês" value={formatCurrency(finance.revenue)} accent="emerald" />
-        <StatCard title="Despesas do mês" value={formatCurrency(finance.expenses)} accent="red" />
-        <StatCard
-          title="Lucro do mês"
-          value={formatCurrency(finance.profit)}
-          accent={finance.profit >= 0 ? "sky" : "red"}
-        />
-      </div>
+      {owner && finance ? (
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          <StatCard title="Faturamento hoje" value={formatCurrency(today.dailyRevenue)} />
+          <StatCard title="Receita do mês" value={formatCurrency(finance.revenue)} accent="emerald" />
+          <StatCard title="Despesas do mês" value={formatCurrency(finance.expenses)} accent="red" />
+          <StatCard
+            title="Lucro do mês"
+            value={formatCurrency(finance.profit)}
+            accent={finance.profit >= 0 ? "sky" : "red"}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          <StatCard title="Veículos hoje" value={String(today.vehiclesToday)} />
+          <StatCard title="Aguardando" value={String(today.statusCounts.aguardando)} accent="sky" />
+          <StatCard title="Em lavagem" value={String(today.statusCounts.emLavagem)} accent="sky" />
+          <StatCard title="Prontos" value={String(today.statusCounts.pronto)} accent="emerald" />
+        </div>
+      )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className={`grid gap-4 ${owner && finance ? "lg:grid-cols-3" : ""}`}>
+        <Card className={owner && finance ? "lg:col-span-2" : ""}>
           <CardHeader>
             <CardTitle>Operação de hoje</CardTitle>
           </CardHeader>
@@ -87,22 +108,24 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-sky-200 bg-sky-50/30">
-          <CardHeader>
-            <CardTitle>Resumo financeiro</CardTitle>
-            <p className="text-sm capitalize text-slate-600">{finance.period.label}</p>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <Row label="Margem de lucro" value={`${finance.marginPercent}%`} />
-            <Row label="Ticket médio" value={formatCurrency(finance.averageTicket)} />
-            <Row label="A receber" value={formatCurrency(finance.pendingRevenue)} />
-            <Link href="/financeiro" className="mt-3 inline-block">
-              <Button size="sm" className="w-full">
-                Ver financeiro completo
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+        {owner && finance && (
+          <Card className="border-sky-200 bg-sky-50/30">
+            <CardHeader>
+              <CardTitle>Resumo financeiro</CardTitle>
+              <p className="text-sm capitalize text-slate-600">{finance.period.label}</p>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <Row label="Margem de lucro" value={`${finance.marginPercent}%`} />
+              <Row label="Ticket médio" value={formatCurrency(finance.averageTicket)} />
+              <Row label="A receber" value={formatCurrency(finance.pendingRevenue)} />
+              <Link href="/financeiro" className="mt-3 inline-block">
+                <Button size="sm" className="w-full">
+                  Ver financeiro completo
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Card>

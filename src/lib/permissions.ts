@@ -14,10 +14,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     "Controle de estoque",
   ],
   ATENDENTE: [
-    "Painel operacional e ordens de servi\u00e7o",
-    "Cadastrar clientes e ve\u00edculos",
-    "Consultar servi\u00e7os (sem editar pre\u00e7os)",
+    "Painel operacional e ordens de serviço",
+    "Cadastrar clientes e veículos",
+    "Consultar serviços (sem editar preços)",
     "Imprimir comprovantes",
+    "Sem acesso a relatórios financeiros",
   ],
 };
 
