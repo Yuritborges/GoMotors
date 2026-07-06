@@ -173,11 +173,21 @@ A cada push/PR na `main`, roda **lint** e **testes** (`.github/workflows/ci.yml`
 
 ### Publicar uma atualização
 
+**Não faça push direto na `main`.** Fluxo seguro:
+
 ```bash
-git add .
-git commit -m "Descrição da mudança"
-git push origin main
-npm run db:migrate:deploy   # só se houver migration nova
+git checkout dev
+# alterar, testar com npm run dev
+git push origin dev          # preview na Vercel (só você)
+npm run promote:prod         # merge testado → main → produção
+```
+
+Detalhes, checklist e rollback: **`WORKFLOW.md`**
+
+Se houve **migration nova**:
+
+```bash
+npm run db:migrate:deploy
 ```
 
 Em ~2–5 minutos:
@@ -188,6 +198,27 @@ Em ~2–5 minutos:
 | Tela TV | https://go-motors-ten.vercel.app/display |
 
 > Atualizações de código **não** apagam dados do banco. O seed também **não** roda no deploy.
+
+---
+
+## Atualização segura (dev → main)
+
+O Matheus usa a branch **`main`**. Você desenvolve na **`dev`**.
+
+| Passo | Comando |
+|-------|---------|
+| Desenvolver | `git checkout dev` → alterar → `npm run dev` |
+| Testar online | `git push origin dev` (preview Vercel) |
+| Publicar | `npm run promote:prod` |
+| Emergência | Vercel → Deployments → Promote to Production |
+
+Guia completo: **[WORKFLOW.md](WORKFLOW.md)**
+
+Proteção opcional no Git:
+
+```bash
+git config core.hooksPath .githooks
+```
 
 ---
 

@@ -1,0 +1,32 @@
+---
+description: Avisar e exigir fluxo dev antes de alterar código ou publicar em produção
+alwaysApply: true
+---
+
+# GoMotors — dev antes de main (produção)
+
+**Produção do cliente:** branch `main` → https://go-motors-ten.vercel.app  
+**Desenvolvimento/testes:** branch `dev` → preview Vercel (só o desenvolvedor)  
+**Versão estável de entrega:** tag `v1.0-entrega`
+
+## Antes de QUALQUER alteração de código
+
+1. **Avisar o usuário** se a branch atual for `main`:
+   > "Você está na `main` (produção do Matheus). Recomendo `git checkout dev` antes de alterar o código."
+
+2. **Não sugerir** `git push origin main` até o usuário confirmar que testou na `dev`.
+
+3. **Fluxo obrigatório:**
+   - Alterar na `dev` → `npm run dev` e/ou `git push origin dev` (preview)
+   - Testar login, nova OS, painel, telão
+   - Só então: `npm run promote:prod` ou merge manual na `main`
+
+4. **Nunca** rodar `db:seed` apontando para banco de produção.
+
+5. Se o usuário pedir deploy urgente na produção, lembrar do **rollback** na Vercel (Deployments → deploy anterior → Promote to Production).
+
+## Ao iniciar tarefas de implementação
+
+Mencionar brevemente: *"Vou trabalhar na branch `dev` para não afetar o lava-rápido em produção."*
+
+Consulte `WORKFLOW.md` para o passo a passo completo.

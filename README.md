@@ -185,15 +185,16 @@ No celular (mesma Wi‑Fi): `http://SEU_IP:3000`
 
 ## Deploy em produção
 
-Guia completo: **[DEPLOY.md](./DEPLOY.md)**
+Guia completo: **[DEPLOY.md](./DEPLOY.md)**  
+Fluxo seguro (dev → main): **[WORKFLOW.md](./WORKFLOW.md)**
 
 Resumo:
 
 1. Criar banco no **Neon** (PostgreSQL)
 2. Conectar repositório na **Vercel**
 3. Configurar variáveis: `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`
-4. Deploy automático a cada `git push`
-5. Rodar `npm run db:seed` uma vez após o primeiro deploy
+4. Produção: push na branch **`main`** (use `npm run promote:prod`)
+5. Desenvolvimento: branch **`dev`** — testar antes de publicar
 
 ---
 
@@ -201,7 +202,9 @@ Resumo:
 
 | Comando | Descrição |
 |---------|-----------|
-| `npm run dev` | Servidor de desenvolvimento |
+| `npm run dev` | Servidor de desenvolvimento (avisa se estiver na `main`) |
+| `npm run promote:prod` | Publicar `dev` → `main` com checklist |
+| `npm run branch:check` | Verificar se está na branch correta |
 | `npm run build` | Build de produção (migrate + Next.js) |
 | `npm run db:migrate:deploy` | Aplicar migrations no Postgres |
 | `npm run db:seed` | Popular dados de demonstração |
