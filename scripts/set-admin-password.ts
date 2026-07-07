@@ -3,15 +3,17 @@ import { createPrismaClient } from "../src/lib/create-prisma";
 import { hashPassword } from "../src/lib/auth";
 
 const email = (process.env.ADMIN_EMAIL ?? "matheuspoli@gomotors.local").trim();
-const password = process.env.ADMIN_PASSWORD?.trim();
+const passwordRaw = process.env.ADMIN_PASSWORD?.trim();
 
-if (!password || password.length < 8) {
+if (!passwordRaw || passwordRaw.length < 8) {
   console.error(
     "Defina ADMIN_PASSWORD no .env (mínimo 8 caracteres).\n" +
       "Opcional: ADMIN_EMAIL para outro usuário."
   );
   process.exit(1);
 }
+
+const password = passwordRaw;
 
 const prisma = createPrismaClient();
 
