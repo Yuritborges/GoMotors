@@ -53,7 +53,9 @@ try {
   run("git checkout main");
   run("git pull origin main");
   run("git merge dev --no-edit");
-  run("git push origin main");
+  run("git push origin main", {
+    env: { ...process.env, ALLOW_MAIN_PUSH: "1" },
+  });
   run("git checkout dev");
 
   console.log("\n✓ Produção atualizada. Aguarde o deploy na Vercel (~2–5 min).");
