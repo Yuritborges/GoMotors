@@ -295,6 +295,16 @@ function buildVehicleMap(allRows: RotativoRow[]): Map<string, VehicleSeed> {
   return map;
 }
 
+async function backupUsers() {
+  try {
+    return await prisma.user.findMany({
+      select: { email: true, passwordHash: true, name: true, role: true },
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function clearDatabase() {
   await prisma.auditLog.deleteMany();
   await prisma.stockMovement.deleteMany();
@@ -319,6 +329,17 @@ async function main() {
     throw new Error(`Pasta não encontrada: ${DADOS}`);
   }
 
+  const requiredFiles = [
+    "ROTATIVO 2026.xlsx",
+    "LOJAS 2026.xlsx",
+    "GASTOS LAVA RAPIDO 2026.xlsx",
+  ];
+  for (const file of requiredFiles) {
+    if (!fs.existsSync(path.join(DADOS, file))) {
+      throw new Error(`Planilha obrigatória ausente: dados/${file}`);
+    }
+  }
+
   console.log("Lendo planilhas...");
   const rotativo = readRotativo();
   const lojas = readLojas();
@@ -341,6 +362,11 @@ async function main() {
   const vehicleMap = buildVehicleMap(allOrders);
   console.log(`Veículos únicos: ${vehicleMap.size}`);
 
+  const userBackup = await backupUsers();
+  if (userBackup.length > 0) {
+    console.log(`Preservando senhas de ${userBackup.length} usuário(s) existente(s).`);
+  }
+
   console.log("Limpando banco...");
   await clearDatabase();
 
@@ -353,22 +379,40 @@ async function main() {
     resolveSeedPassword("SEED_ATTENDANT_PASSWORD", "Atendente"),
     12
   );
-  await prisma.user.createMany({
-    data: [
-      {
-        name: "Matheus — Go Motors",
-        email: "matheuspoli@gomotors.local",
-        passwordHash: ownerPassword,
-        role: "PROPRIETARIO",
-      },
-      {
-        name: "Atendente Go Motors",
-        email: "atendente@gomotors.local",
-        passwordHash: attendantPassword,
-        role: "ATENDENTE",
-      },
-    ],
-  });
+
+  const defaultUsers = [
+    {
+      name: "Matheus — Go Motors",
+      email: "matheuspoli@gomotors.local",
+      passwordHash: ownerPassword,
+      role: "PROPRIETARIO" as const,
+    },
+    {
+      name: "Atendente Go Motors",
+      email: "atendente@gomotors.local",
+      passwordHash: attendantPassword,
+      role: "ATENDENTE" as const,
+    },
+  ];
+
+  for (const user of defaultUsers) {
+    const backup = userBackup.find((u) => u.email === user.email);
+    await prisma.user.create({
+      data: backup
+        ? {
+            name: backup.name,
+            email: backup.email,
+            passwordHash: backup.passwordHash,
+            role: backup.role,
+          }
+        : user,
+    });
+  }
+
+  for (const backup of userBackup) {
+    if (defaultUsers.some((u) => u.email === backup.email)) continue;
+    await prisma.user.create({ data: backup });
+  }
 
   console.log("Criando funcionários...");
   const employees = await Promise.all(
