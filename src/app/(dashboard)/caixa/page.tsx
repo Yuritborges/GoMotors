@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Banknote,
   Car,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   CreditCard,
   PiggyBank,
@@ -14,15 +16,15 @@ import {
   Wallet,
   Wrench,
 } from "lucide-react";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import {
   ORDER_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
 } from "@/lib/constants";
-import { usePolling } from "@/lib/use-polling";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
 
@@ -99,16 +101,39 @@ const METHOD_COLORS: Record<string, string> = {
   CREDITO: "from-indigo-500 to-indigo-600",
 };
 
+function todayInputValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function shiftDate(isoDate: string, days: number) {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const next = new Date(y, m - 1, d + days);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+}
+
 export default function CaixaPage() {
+  const [date, setDate] = useState(todayInputValue);
   const [data, setData] = useState<CashData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    const res = await fetch("/api/cash");
-    if (res.ok) setData(await res.json());
-  }, []);
+  const isViewingToday = date === todayInputValue();
+  const dayLabel = isViewingToday ? "hoje" : formatDate(`${date}T12:00:00`);
 
-  usePolling(load, 20000);
+  const load = useCallback(async () => {
+    const res = await fetch(`/api/cash?date=${encodeURIComponent(date)}`);
+    if (res.ok) setData(await res.json());
+  }, [date]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!isViewingToday) return;
+    const interval = setInterval(() => void load(), 20000);
+    return () => clearInterval(interval);
+  }, [isViewingToday, load]);
 
   async function manualRefresh() {
     setRefreshing(true);
@@ -128,8 +153,48 @@ export default function CaixaPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Caixa" description="Fechamento e movimentação do dia">
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+      <PageHeader
+        title="Caixa"
+        description={
+          isViewingToday
+            ? "Fechamento e movimentação do dia"
+            : `Fechamento de ${dayLabel}`
+        }
+      >
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="shrink-0"
+              onClick={() => setDate((d) => shiftDate(d, -1))}
+              aria-label="Dia anterior"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full min-w-[140px] sm:w-auto"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="shrink-0"
+              onClick={() => setDate((d) => shiftDate(d, 1))}
+              aria-label="Próximo dia"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            {!isViewingToday && (
+              <Button type="button" variant="secondary" onClick={() => setDate(todayInputValue())}>
+                Hoje
+              </Button>
+            )}
+          </div>
           <Link href="/painel">
             <Button variant="secondary" className="w-full gap-2 sm:w-auto">
               <Wrench className="h-4 w-4" />
@@ -151,7 +216,7 @@ export default function CaixaPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <MetricCard
           icon={TrendingUp}
-          label="Recebido hoje"
+          label={isViewingToday ? "Recebido hoje" : "Recebido no dia"}
           value={formatCurrency(data.totalSold)}
           accent="text-emerald-600 bg-emerald-50"
         />
@@ -180,7 +245,7 @@ export default function CaixaPage() {
         />
         <MetricCard
           icon={Wrench}
-          label="Na fila agora"
+          label={isViewingToday ? "Na fila agora" : "Ficaram na fila"}
           value={String(inProgress)}
           sub={`${data.laneBreakdown.find((l) => l.lane === "PRONTO")?.count ?? 0} pronto(s)`}
           accent="text-orange-600 bg-orange-50"
@@ -201,7 +266,9 @@ export default function CaixaPage() {
           </CardHeader>
           <CardContent>
             {data.hourlyRevenue.length === 0 ? (
-              <p className="text-sm text-slate-500">Nenhum pagamento registrado hoje.</p>
+              <p className="text-sm text-slate-500">
+                Nenhum pagamento registrado {isViewingToday ? "hoje" : `em ${dayLabel}`}.
+              </p>
             ) : (
               <div className="flex h-36 items-end gap-1.5">
                 {data.hourlyRevenue.map(({ hour, amount }) => (
@@ -221,7 +288,7 @@ export default function CaixaPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Status da fila hoje</CardTitle>
+            <CardTitle>Status da fila {isViewingToday ? "hoje" : `em ${dayLabel}`}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {(data.laneBreakdown ?? []).map((lane) => (
@@ -309,7 +376,7 @@ export default function CaixaPage() {
       {data.pendingOrders.length === 0 && data.pendingPaymentCount === 0 && (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-8 sm:flex-row sm:justify-between">
-            <p className="text-sm text-slate-500">Nenhuma OS pendente registrada hoje.</p>
+            <p className="text-sm text-slate-500">Nenhuma OS pendente {isViewingToday ? "hoje" : `em ${dayLabel}`}.</p>
             <Link href="/caixa/pendencias">
               <Button variant="outline">Ver pendências de todos os clientes</Button>
             </Link>
@@ -321,7 +388,7 @@ export default function CaixaPage() {
         <Card>
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Pagamentos pendentes (hoje)</CardTitle>
+              <CardTitle>Pagamentos pendentes ({isViewingToday ? "hoje" : dayLabel})</CardTitle>
               <p className="mt-1 text-sm text-slate-500">
                 {data.pendingPaymentCount} OS · {formatCurrency(data.pendingAmount)}
               </p>
@@ -355,7 +422,9 @@ export default function CaixaPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Movimentação do dia ({data.todayOrders.length})</CardTitle>
+          <CardTitle>
+            Movimentação {isViewingToday ? "do dia" : `de ${dayLabel}`} ({data.todayOrders.length})
+          </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -403,7 +472,9 @@ export default function CaixaPage() {
             </tbody>
           </table>
           {data.todayOrders.length === 0 && (
-            <p className="py-8 text-center text-sm text-slate-500">Nenhuma ordem hoje.</p>
+            <p className="py-8 text-center text-sm text-slate-500">
+              Nenhuma ordem {isViewingToday ? "hoje" : `em ${dayLabel}`}.
+            </p>
           )}
         </CardContent>
       </Card>
