@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { endOfDay, startOfDay } from "@/lib/utils";
 import { handleAuthError, requireOwner } from "@/lib/auth";
 import { isDeferredPaymentMethod } from "@/lib/payments";
-import { excludeImportedOrdersWhere } from "@/lib/imported-orders";
+import { isImportedHistoricalOrder } from "@/lib/imported-orders";
 import { buildLaneBreakdown } from "@/lib/lane-breakdown";
 import type { DisplayOrderInput } from "@/lib/display-lanes-types";
 
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     await requireOwner();
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get("date");
-    const today = dateParam ? new Date(dateParam) : new Date();
+    const today = dateParam ? new Date(`${dateParam}T12:00:00`) : new Date();
     const start = startOfDay(today);
     const end = endOfDay(today);
 
@@ -20,7 +20,6 @@ export async function GET(request: Request) {
       where: {
         entryAt: { gte: start, lte: end },
         status: { not: "CANCELADO" },
-        ...excludeImportedOrdersWhere,
       },
       include: {
         payments: true,
@@ -64,7 +63,12 @@ export async function GET(request: Request) {
     };
 
     const activeOrders: DisplayOrderInput[] = orders
-      .filter((o) => o.status !== "ENTREGUE" && o.status !== "CANCELADO")
+      .filter(
+        (o) =>
+          o.status !== "ENTREGUE" &&
+          o.status !== "CANCELADO" &&
+          !isImportedHistoricalOrder(o.notes)
+      )
       .map((o) => ({
         id: o.id,
         status: o.status,

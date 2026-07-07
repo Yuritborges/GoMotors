@@ -66,12 +66,15 @@ export function resolveFinancePeriod(
   toParam?: string | null
 ): FinancePeriod {
   if (fromParam && toParam) {
-    const from = startOfDay(new Date(fromParam));
-    const to = endOfDay(new Date(toParam));
+    const from = startOfDay(new Date(`${fromParam}T12:00:00`));
+    const to = endOfDay(new Date(`${toParam}T12:00:00`));
+    const sameDay = fromParam === toParam;
     return {
       from,
       to,
-      label: `${from.toLocaleDateString("pt-BR")} – ${to.toLocaleDateString("pt-BR")}`,
+      label: sameDay
+        ? from.toLocaleDateString("pt-BR")
+        : `${from.toLocaleDateString("pt-BR")} – ${to.toLocaleDateString("pt-BR")}`,
     };
   }
 

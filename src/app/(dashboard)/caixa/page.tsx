@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Banknote,
   Car,
@@ -113,9 +114,17 @@ function shiftDate(isoDate: string, days: number) {
 }
 
 export default function CaixaPage() {
+  const searchParams = useSearchParams();
   const [date, setDate] = useState(todayInputValue);
   const [data, setData] = useState<CashData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("date");
+    if (fromUrl && /^\d{4}-\d{2}-\d{2}$/.test(fromUrl)) {
+      setDate(fromUrl);
+    }
+  }, [searchParams]);
 
   const isViewingToday = date === todayInputValue();
   const dayLabel = isViewingToday ? "hoje" : formatDate(`${date}T12:00:00`);
@@ -153,21 +162,20 @@ export default function CaixaPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Caixa"
-        description={
-          isViewingToday
-            ? "Fechamento e movimentação do dia"
-            : `Fechamento de ${dayLabel}`
-        }
-      >
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="flex items-center gap-1">
+      <Card className="border-sky-300 bg-gradient-to-r from-sky-50 to-white shadow-sm">
+        <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-sky-900">Data do fechamento</p>
+            <p className="text-xs text-sky-700">
+              Inclui histórico importado das planilhas + ordens do sistema
+            </p>
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <Button
               type="button"
               variant="outline"
               size="icon"
-              className="shrink-0"
+              className="shrink-0 bg-white"
               onClick={() => setDate((d) => shiftDate(d, -1))}
               aria-label="Dia anterior"
             >
@@ -177,13 +185,13 @@ export default function CaixaPage() {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full min-w-[140px] sm:w-auto"
+              className="min-w-[160px] bg-white"
             />
             <Button
               type="button"
               variant="outline"
               size="icon"
-              className="shrink-0"
+              className="shrink-0 bg-white"
               onClick={() => setDate((d) => shiftDate(d, 1))}
               aria-label="Próximo dia"
             >
@@ -195,6 +203,18 @@ export default function CaixaPage() {
               </Button>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <PageHeader
+        title="Caixa"
+        description={
+          isViewingToday
+            ? "Fechamento e movimentação do dia"
+            : `Fechamento de ${dayLabel}`
+        }
+      >
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <Link href="/painel">
             <Button variant="secondary" className="w-full gap-2 sm:w-auto">
               <Wrench className="h-4 w-4" />

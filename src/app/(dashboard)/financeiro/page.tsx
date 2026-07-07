@@ -58,8 +58,21 @@ function currentMonthValue() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function todayInputValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function shiftDate(isoDate: string, days: number) {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const next = new Date(y, m - 1, d + days);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+}
+
 export default function FinanceiroPage() {
+  const [viewMode, setViewMode] = useState<"month" | "day">("month");
   const [month, setMonth] = useState(currentMonthValue());
+  const [day, setDay] = useState(todayInputValue());
   const [data, setData] = useState<FinanceData | null>(null);
   const [loading, setLoading] = useState(true);
   const autoMonth = useRef(false);
@@ -67,10 +80,15 @@ export default function FinanceiroPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/finance?month=${month}`);
+      const url =
+        viewMode === "day"
+          ? `/api/finance?from=${encodeURIComponent(day)}&to=${encodeURIComponent(day)}`
+          : `/api/finance?month=${encodeURIComponent(month)}`;
+      const res = await fetch(url);
       const json = await res.json();
 
       if (
+        viewMode === "month" &&
         !autoMonth.current &&
         json.suggestedMonth &&
         json.suggestedMonth !== month &&
@@ -86,7 +104,7 @@ export default function FinanceiroPage() {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [viewMode, month, day]);
 
   useEffect(() => {
     load();
@@ -138,7 +156,7 @@ export default function FinanceiroPage() {
             + Despesa
           </Button>
         </Link>
-        <Link href="/caixa" className="w-full sm:w-auto">
+        <Link href={viewMode === "day" ? `/caixa?date=${day}` : "/caixa"} className="w-full sm:w-auto">
           <Button variant="secondary" className="w-full sm:w-auto">
             Caixa do dia
           </Button>
@@ -148,15 +166,62 @@ export default function FinanceiroPage() {
         </Button>
       </PageHeader>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <Field className="sm:w-56">
-          <Label>Período (mês)</Label>
-          <Input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-          />
-        </Field>
+      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant={viewMode === "month" ? "default" : "outline"}
+            onClick={() => setViewMode("month")}
+          >
+            Por mês
+          </Button>
+          <Button
+            type="button"
+            variant={viewMode === "day" ? "default" : "outline"}
+            onClick={() => setViewMode("day")}
+          >
+            Por dia
+          </Button>
+        </div>
+        {viewMode === "month" ? (
+          <Field className="sm:w-56">
+            <Label>Período (mês)</Label>
+            <Input
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+            />
+          </Field>
+        ) : (
+          <Field className="sm:w-56">
+            <Label>Dia</Label>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setDay((d) => shiftDate(d, -1))}
+                aria-label="Dia anterior"
+              >
+                ‹
+              </Button>
+              <Input
+                type="date"
+                value={day}
+                onChange={(e) => setDay(e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setDay((d) => shiftDate(d, 1))}
+                aria-label="Próximo dia"
+              >
+                ›
+              </Button>
+            </div>
+          </Field>
+        )}
         <p className="text-sm text-slate-500">
           {data.paidOrderCount} ordens pagas · {data.vehicleCount} veículos no período
         </p>
