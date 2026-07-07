@@ -5,220 +5,170 @@
 <h1 align="center">GoMotors</h1>
 
 <p align="center">
-  Sistema de gestão completo para <strong>lava-jato</strong> e estética automotiva.<br/>
-  Operação no celular, controle no desktop, tela TV para o cliente.
+  Sistema de gestão para <strong>lava-rápido</strong> — operação, caixa, telão e relatórios.<br/>
+  Desenvolvido para a <strong>Go Motors</strong> (Matheus Poli).
 </p>
 
 <p align="center">
-  <a href="https://go-motors-ten.vercel.app"><strong>Demo online</strong></a> ·
-  <a href="https://go-motors-ten.vercel.app/display">Tela TV</a> ·
-  <a href="https://github.com/Yuritborges/GoMotors">GitHub</a> ·
+  <a href="https://go-motors-ten.vercel.app"><strong>Produção</strong></a> ·
+  <a href="https://go-motors-ten.vercel.app/display">Telão TV</a> ·
+  <a href="./WORKFLOW.md">Fluxo dev/main</a> ·
+  <a href="./ENTREGA.md">Checklist entrega</a> ·
   <a href="./DEPLOY.md">Deploy</a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React 19" />
-  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/PostgreSQL-Neon-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL Neon" />
   <img src="https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel" alt="Vercel" />
-  <img src="https://img.shields.io/badge/Mobile-first-✓-22c55e" alt="Mobile-first" />
 </p>
 
 ---
 
-## Índice
+## ⚠️ Antes de alterar qualquer código
 
-- [Sobre o projeto](#sobre-o-projeto)
-- [Por que o GoMotors?](#por-que-o-gomotors)
-- [Demo ao vivo](#demo-ao-vivo)
-- [Funcionalidades](#funcionalidades)
-- [Perfis de acesso](#perfis-de-acesso)
-- [Stack tecnológica](#stack-tecnológica)
-- [Rodar localmente](#rodar-localmente)
-- [Deploy em produção](#deploy-em-produção)
-- [Scripts úteis](#scripts-úteis)
-- [Estrutura do projeto](#estrutura-do-projeto)
-- [Fluxo operacional](#fluxo-operacional)
-- [Próximos passos](#próximos-passos-pós-contrato)
-- [Licença e uso](#licença-e-uso)
+> **O Matheus usa a branch `main`. Você desenvolve na `dev`.**
 
----
+```bash
+git branch --show-current   # deve ser: dev
+git checkout dev            # se não estiver
+```
 
-## Sobre o projeto
+| Branch | Uso | URL |
+|--------|-----|-----|
+| **`main`** | Produção — lava-rápido em operação | https://go-motors-ten.vercel.app |
+| **`dev`** | Suas alterações e testes | Preview Vercel após `git push origin dev` |
 
-O **GoMotors** nasceu para substituir cadernos, planilhas e controles improvisados em lava-jatos. É um MVP funcional que cobre o fluxo operacional do dia a dia e dá ao dono uma visão gerencial clara do negócio.
+### Fluxo obrigatório
 
-Ideal para **apresentação a clientes**, validação com a equipe e **implantação personalizada** com dados reais (clientes, serviços, estoque, funcionários).
+```text
+dev  →  npm run dev (testar local)  →  git push origin dev (preview)  →  npm run promote:prod  →  main
+```
 
----
+| Comando | O que faz |
+|---------|-----------|
+| `npm run dev` | Servidor local — **avisa** se você estiver na `main` |
+| `npm run branch:check` | Mostra alerta de branch |
+| `npm run promote:prod` | Publica na produção com checklist |
+| `npm test` | Testes automatizados |
 
-## Por que o GoMotors?
+**Nunca** faça `git push origin main` direto. Detalhes: **[WORKFLOW.md](./WORKFLOW.md)**
 
-| Diferencial | Benefício |
-|-------------|-----------|
-| **Painel Kanban em tempo real** | Toda a equipe vê o status de cada veículo sem gritar ou anotar no papel |
-| **Tela TV para clientes** | Experiência profissional — o cliente acompanha a fila como em drive-thru |
-| **Mobile-first** | Atendentes registram ordens direto no celular, na hora da entrada |
-| **Caixa e relatórios** | Dono fecha o dia com números reais: faturamento, ticket médio, formas de pagamento |
-| **Perfis de acesso** | Admin vê tudo; atendente só o que precisa para operar |
-| **Pronto para nuvem** | Hospedado na Vercel com banco PostgreSQL (Neon) — acessível de qualquer lugar |
+Proteção Git (rodar uma vez por máquina):
+
+```bash
+git config core.hooksPath .githooks
+```
 
 ---
 
-## Demo ao vivo
+## Produção (Go Motors)
 
-| Ambiente | URL |
-|----------|-----|
-| **Sistema** | [https://go-motors-ten.vercel.app](https://go-motors-ten.vercel.app) |
-| **Tela TV (clientes)** | [https://go-motors-ten.vercel.app/display](https://go-motors-ten.vercel.app/display) |
+| Uso | URL |
+|-----|-----|
+| **Sistema** | https://go-motors-ten.vercel.app |
+| **Telão (TV)** | https://go-motors-ten.vercel.app/display |
 
-### Acesso ao sistema
-
-| Ambiente | URL |
-|----------|-----|
-| **Sistema** | [https://go-motors-ten.vercel.app](https://go-motors-ten.vercel.app) |
-| **Tela TV (clientes)** | [https://go-motors-ten.vercel.app/display](https://go-motors-ten.vercel.app/display) |
-
-Use o e-mail e senha definidos pelo administrador. Para ambiente novo, configure `SEED_OWNER_PASSWORD` no `.env` antes do seed ou altere a senha em **Usuários** / `npm run db:set-password`.
-
-> **Dica:** abra o link no celular para ver o layout mobile com barra inferior (**Painel · Ordens · Clientes · Mais**). No desktop, a navegação lateral completa fica disponível.
+Login com e-mail e senha definidos em **Usuários** (não há senhas padrão públicas).
 
 ---
 
-## Funcionalidades
+## O que o sistema faz
+
+Sistema web para **um estabelecimento** — não é site de divulgação; é ferramenta interna da equipe.
 
 ### Operação (dia a dia)
 
 | Módulo | Descrição |
 |--------|-----------|
-| **Painel operacional** | Kanban em tempo real: Aguardando → Em lavagem → Finalização → Pronto |
-| **Ordens de serviço** | Registro de entrada, serviços, desconto e forma de pagamento |
-| **Clientes e veículos** | Cadastro com placa, histórico e busca rápida |
-| **Comprovante** | Impressão da ordem após o atendimento |
-| **Tela TV** | Display público estilo drive-thru para o cliente acompanhar o status |
+| **Painel operacional** | Kanban em tempo real por etapa (lavagem, aspiração, extras, finalização, pronto) |
+| **Nova ordem** | Entrada de veículo, serviços, desconto, pagamento |
+| **Clientes e veículos** | Cadastro, histórico, busca por placa |
+| **Comprovante** | Impressão e link WhatsApp |
+| **Telão `/display`** | Fila pública na TV (placa + status) |
 
 ### Gestão (administrador)
 
 | Módulo | Descrição |
 |--------|-----------|
-| **Dashboard** | Faturamento, veículos do dia, ticket médio e indicadores |
-| **Serviços** | Catálogo com preços por tipo de veículo (moto, carro, SUV…) |
-| **Caixa** | Fechamento diário por forma de pagamento |
-| **Despesas** | Controle financeiro básico por categoria |
-| **Estoque** | Produtos com alerta de reposição |
-| **Relatórios** | Indicadores mensais + exportação CSV |
-| **Usuários** | Admin cria, edita e remove acessos da equipe |
+| **Dashboard e financeiro** | Faturamento, despesas, lucro |
+| **Caixa** | Fechamento diário e pendências |
+| **Mensalidade** | Lançar, liberar carro, quitar no fechamento |
+| **Serviços** | Preços por tipo de veículo |
+| **Estoque, funcionários, lojas parceiras** | Controle completo |
+| **Relatórios e auditoria** | Exportação e histórico de ações |
+| **Usuários** | Criar atendentes e administradores |
 
-### Mobile-first
-
-- Barra de navegação inferior no celular (sem sidebar fixa quebrando o layout)
-- Menu **Mais** com módulos administrativos
-- Logo da empresa visível no header
-- Formulários e tabelas adaptados para telas pequenas (sem zoom indesejado no iOS)
-
----
-
-## Perfis de acesso
+### Perfis
 
 ```
 Administrador (PROPRIETARIO)
-├── Dashboard, painel, ordens, clientes
-├── Serviços (editar preços)
-├── Caixa, despesas, relatórios
-├── Estoque e usuários
+├── Tudo: caixa, financeiro, relatórios, usuários, estoque
 
 Atendente (ATENDENTE)
-├── Painel, ordens, clientes
-├── Consulta de serviços
-└── Comprovantes
+├── Painel, nova OS, clientes, ordens, comprovante
+└── Sem caixa, relatórios nem configurações
 ```
 
 ---
 
-## Stack tecnológica
+## Stack
 
 | Camada | Tecnologia |
 |--------|------------|
 | Frontend | Next.js 16, React 19, Tailwind CSS 4 |
-| Backend | API Routes + Server Actions |
+| Backend | API Routes (Next.js) |
 | Banco | PostgreSQL (Neon) + Prisma 7 |
 | Auth | JWT em cookie httpOnly + bcrypt |
-| Deploy | Vercel + GitHub (CI/CD automático) |
+| Hospedagem | Vercel (CI/CD na `main`) |
+| Testes | Node test runner + GitHub Actions |
 
 ---
 
-## Rodar localmente
+## Rodar no seu PC
 
 ### Pré-requisitos
 
 - Node.js 20+
-- Conta gratuita no [Neon](https://neon.tech)
+- Git
+- Arquivo `.env` (copiar de `.env.example`)
 
-### Passo a passo
+### Setup
 
 ```bash
-# 1. Clonar
 git clone https://github.com/Yuritborges/GoMotors.git
 cd GoMotors
+git checkout dev
 
-# 2. Instalar
 npm install
-
-# 3. Configurar ambiente
 cp .env.example .env
-# Edite .env com DATABASE_URL, DIRECT_URL e AUTH_SECRET do Neon
+# Edite .env: DATABASE_URL, DIRECT_URL, AUTH_SECRET (mesmos da Vercel/Neon)
 
-# 4. Banco e dados demo
 npm run db:migrate:deploy
-npm run db:seed
-
-# 5. Servidor (acessível na rede local)
 npm run dev
 ```
 
-Acesse [http://localhost:3000](http://localhost:3000)
+Acesse http://localhost:3000
 
-No celular (mesma Wi‑Fi): `http://SEU_IP:3000`
-
----
-
-## Deploy em produção
-
-Guia completo: **[DEPLOY.md](./DEPLOY.md)**  
-Fluxo seguro (dev → main): **[WORKFLOW.md](./WORKFLOW.md)**
-
-Resumo:
-
-1. Criar banco no **Neon** (PostgreSQL)
-2. Conectar repositório na **Vercel**
-3. Configurar variáveis: `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`
-4. Produção: push na branch **`main`** (use `npm run promote:prod`)
-5. Desenvolvimento: branch **`dev`** — testar antes de publicar
+> Use o **mesmo Neon** da produção para ver os dados reais, ou um Neon separado para testes.
 
 ---
 
-## Scripts úteis
+## Scripts
 
 | Comando | Descrição |
 |---------|-----------|
-| `npm run dev` | Servidor de desenvolvimento (avisa se estiver na `main`) |
+| `npm run dev` | Desenvolvimento local (avisa se estiver na `main`) |
 | `npm run promote:prod` | Publicar `dev` → `main` com checklist |
-| `npm run branch:check` | Verificar se está na branch correta |
-| `npm run build` | Build de produção (migrate + Next.js) |
-| `npm run db:migrate:deploy` | Aplicar migrations no Postgres |
-| `npm run db:seed` | Popular dados de demonstração |
-| `npm run db:reset` | Resetar banco e re-seed |
-
-### Testes de integração
-
-```bash
-# Verificar banco Neon (dados demo)
-npx tsx scripts/test-neon.mjs
-
-# Verificar APIs na Vercel (PowerShell)
-powershell -ExecutionPolicy Bypass -File scripts/test-vercel.ps1
-```
+| `npm run branch:check` | Verificar branch atual |
+| `npm test` | Testes automatizados |
+| `npm run build` | Build de produção |
+| `npm run db:migrate:deploy` | Aplicar migrations no Neon |
+| `npm run db:import` | Importar planilhas de `dados/` |
+| `npm run db:sync-employees` | Sincronizar funcionários |
+| `npm run db:set-password` | Trocar senha do admin via terminal |
+| `npm run db:seed` | **Só ambiente de teste** — apaga tudo |
 
 ---
 
@@ -228,21 +178,58 @@ powershell -ExecutionPolicy Bypass -File scripts/test-vercel.ps1
 GoMotors/
 ├── src/
 │   ├── app/
-│   │   ├── (dashboard)/    # Páginas autenticadas
-│   │   ├── api/            # REST API
-│   │   ├── display/        # Tela TV pública
+│   │   ├── (dashboard)/     # Páginas autenticadas
+│   │   ├── api/             # REST API
+│   │   ├── display/         # Telão público
 │   │   └── login/
-│   ├── components/         # UI, layout mobile, shell
-│   └── lib/                # Auth, Prisma, permissões
-├── prisma/
-│   ├── schema.prisma
-│   ├── seed.ts
-│   └── migrations/
-├── scripts/                # Testes Neon e Vercel
-├── public/logo.png
-├── DEPLOY.md
+│   ├── components/
+│   └── lib/                 # Auth, Prisma, regras de negócio
+├── prisma/                  # Schema e migrations
+├── scripts/                 # Import, deploy, testes
+├── dados/                   # Planilhas do cliente (NÃO vai pro Git)
+├── .cursor/rules/           # Regras para agentes IA (dev antes de main)
+├── WORKFLOW.md              # Fluxo dev → produção
+├── ENTREGA.md               # Checklist de entrega
+├── DEPLOY.md                # Neon + Vercel
 └── README.md
 ```
+
+---
+
+## O que NÃO versionar (`.gitignore`)
+
+| Arquivo/pasta | Motivo |
+|---------------|--------|
+| `.env`, `.env.*` | Secrets (URLs do banco, AUTH_SECRET) |
+| `dados/*` | Planilhas com dados do cliente |
+| `node_modules/`, `.next/` | Gerados localmente |
+| `.vercel/` | Config local da Vercel |
+
+O repositório deve conter **apenas código e documentação**.
+
+---
+
+## Deploy e manutenção
+
+| Ação | Como |
+|------|------|
+| Publicar alteração | `npm run promote:prod` (após testar na `dev`) |
+| Migration nova | `npm run db:migrate:deploy` |
+| Rollback de emergência | Vercel → Deployments → Promote to Production |
+| Tag estável | `v1.0-entrega` |
+
+Guias: **[DEPLOY.md](./DEPLOY.md)** · **[WORKFLOW.md](./WORKFLOW.md)** · **[ENTREGA.md](./ENTREGA.md)**
+
+---
+
+## Limitações conhecidas
+
+| Item | Situação |
+|------|----------|
+| Modo offline | Não implementado — requer internet |
+| Domínio próprio | Opcional |
+| NF fiscal | Não implementado |
+| WhatsApp automático | Apenas link manual no comprovante |
 
 ---
 
@@ -252,37 +239,26 @@ GoMotors/
 flowchart LR
     A[Cliente chega] --> B[Nova ordem]
     B --> C[Aguardando]
-    C --> D[Em lavagem]
-    D --> E[Finalização]
-    E --> F[Pronto]
+    C --> D[Etapas no painel]
+    D --> E[Pronto]
+    E --> F[Pagamento / mensalidade]
     F --> G[Entregue]
     B --> H[Comprovante]
-    C --> I[Tela TV]
+    C --> I[Telão TV]
     D --> I
-    F --> I
+    E --> I
 ```
 
 ---
 
-## Próximos passos (pós-contrato)
-
-- [ ] Implantação com dados reais do cliente
-- [ ] Domínio personalizado (ex.: `www.lavajato.com.br`)
-- [ ] Emissão de NF / integração fiscal
-- [ ] Notificações WhatsApp ao cliente
-- [ ] App PWA instalável no celular
-
----
-
-## Licença e uso
+## Licença
 
 Projeto desenvolvido por **Marlyson Iury Taveira Borges**.  
-Uso, implantação e customização mediante contrato com o cliente.
+Uso e customização mediante contrato com o cliente.
 
 ---
 
 <p align="center">
-  <strong>GoMotors</strong> — Gestão inteligente para lava-jato<br/>
-  <a href="https://go-motors-ten.vercel.app">go-motors-ten.vercel.app</a> ·
-  <a href="https://github.com/Yuritborges/GoMotors">github.com/Yuritborges/GoMotors</a>
+  <strong>GoMotors</strong> — Gestão para lava-rápido<br/>
+  <a href="https://go-motors-ten.vercel.app">go-motors-ten.vercel.app</a>
 </p>
