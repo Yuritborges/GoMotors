@@ -12,8 +12,10 @@ import {
   Clock,
   CreditCard,
   PiggyBank,
+  Lock,
   RefreshCw,
   TrendingUp,
+  Unlock,
   Wallet,
   Wrench,
 } from "lucide-react";
@@ -40,6 +42,7 @@ type CashData = {
   averageTicket: number;
   byPaymentMethod: Record<string, number>;
   totalExpenses: number;
+  employeeExpenses: number;
   estimatedResult: number;
   statusBreakdown: {
     aguardando: number;
@@ -113,11 +116,22 @@ function shiftDate(isoDate: string, days: number) {
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
 }
 
+type ClosingRow = {
+  id: string;
+  date: string;
+  closedBy: string;
+  createdAt: string;
+};
+
 export default function CaixaPage() {
   const searchParams = useSearchParams();
   const [date, setDate] = useState(todayInputValue);
   const [data, setData] = useState<CashData | null>(null);
+  const [closings, setClosings] = useState<ClosingRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [closingLoading, setClosingLoading] = useState(false);
+  const [reopenLoading, setReopenLoading] = useState(false);
+  const [closeError, setCloseError] = useState("");
 
   useEffect(() => {
     const fromUrl = searchParams.get("date");
@@ -130,8 +144,12 @@ export default function CaixaPage() {
   const dayLabel = isViewingToday ? "hoje" : formatDate(`${date}T12:00:00`);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/cash?date=${encodeURIComponent(date)}`);
-    if (res.ok) setData(await res.json());
+    const [cashRes, closingsRes] = await Promise.all([
+      fetch(`/api/cash?date=${encodeURIComponent(date)}`),
+      fetch("/api/cash/closings"),
+    ]);
+    if (cashRes.ok) setData(await cashRes.json());
+    if (closingsRes.ok) setClosings(await closingsRes.json());
   }, [date]);
 
   useEffect(() => {
@@ -149,6 +167,61 @@ export default function CaixaPage() {
     await load();
     setRefreshing(false);
   }
+
+  async function closeCashDay() {
+    if (
+      !confirm(
+        `Fechar o caixa de ${dayLabel}?\n\nSerá gerado um relatório completo com todos os dados do dia.`
+      )
+    ) {
+      return;
+    }
+    setClosingLoading(true);
+    setCloseError("");
+    const res = await fetch("/api/cash/close", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date }),
+    });
+    const json = await res.json();
+    setClosingLoading(false);
+    if (!res.ok) {
+      setCloseError(json.error ?? "Erro ao fechar caixa.");
+      return;
+    }
+    await load();
+    window.location.href = `/caixa/fechamentos/${date}`;
+  }
+
+  async function reopenCashDay(targetDate = date) {
+    const label =
+      targetDate === todayInputValue()
+        ? "hoje"
+        : formatDate(`${targetDate}T12:00:00`);
+    if (
+      !confirm(
+        `Reabrir o caixa de ${label}?\n\nVocê poderá alterar lançamentos e fechar novamente quando terminar.`
+      )
+    ) {
+      return;
+    }
+    setReopenLoading(true);
+    setCloseError("");
+    const res = await fetch("/api/cash/reopen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: targetDate }),
+    });
+    const json = await res.json();
+    setReopenLoading(false);
+    if (!res.ok) {
+      setCloseError(json.error ?? "Erro ao reabrir caixa.");
+      return;
+    }
+    await load();
+  }
+
+  const isDayClosed = closings.some((c) => c.date === date);
 
   if (!data) {
     return <p className="text-sm text-slate-500">Carregando caixa...</p>;
@@ -230,8 +303,38 @@ export default function CaixaPage() {
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
+          {isDayClosed ? (
+            <Button
+              className="w-full gap-2 bg-amber-600 hover:bg-amber-700 sm:w-auto"
+              disabled={reopenLoading}
+              onClick={() => void reopenCashDay()}
+            >
+              <Unlock className="h-4 w-4" />
+              {reopenLoading ? "Reabrindo..." : "Reabrir caixa"}
+            </Button>
+          ) : (
+            <Button
+              className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 sm:w-auto"
+              disabled={closingLoading}
+              onClick={() => void closeCashDay()}
+            >
+              <Lock className="h-4 w-4" />
+              {closingLoading ? "Fechando..." : "Fechar caixa do dia"}
+            </Button>
+          )}
         </div>
       </PageHeader>
+
+      {isDayClosed && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Caixa fechado para este dia. Use <strong>Reabrir caixa</strong> para corrigir lançamentos e
+          fechar de novo.
+        </p>
+      )}
+
+      {closeError && (
+        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{closeError}</p>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <MetricCard
@@ -381,6 +484,12 @@ export default function CaixaPage() {
             </Link>
             <SummaryRow label="Descontos" value={formatCurrency(data.totalDiscounts)} />
             <SummaryRow label="Despesas do dia" value={formatCurrency(data.totalExpenses)} />
+            {data.employeeExpenses > 0 && (
+              <SummaryRow
+                label="Vales / funcionários"
+                value={formatCurrency(data.employeeExpenses)}
+              />
+            )}
             <SummaryRow
               label="Lucro estimado"
               value={formatCurrency(data.estimatedResult)}
@@ -495,6 +604,68 @@ export default function CaixaPage() {
             <p className="py-8 text-center text-sm text-slate-500">
               Nenhuma ordem {isViewingToday ? "hoje" : `em ${dayLabel}`}.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Fechamentos</CardTitle>
+          <p className="text-sm text-slate-500">
+            Histórico de caixas fechados — visualize ou exporte o relatório completo
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {closings.length === 0 ? (
+            <p className="text-sm text-slate-500">Nenhum fechamento registrado ainda.</p>
+          ) : (
+            closings.map((closing) => {
+              const label = formatDate(`${closing.date}T12:00:00`);
+              return (
+                <div
+                  key={closing.id}
+                  className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="font-semibold text-slate-900">Fechamento do dia {label}</p>
+                    <p className="text-xs text-slate-500">
+                      Por {closing.closedBy} · {formatDateTime(closing.createdAt)}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Link href={`/caixa/fechamentos/${closing.date}`}>
+                      <Button size="sm" variant="secondary">
+                        Visualizar relatório
+                      </Button>
+                    </Link>
+                    <a href={`/api/cash/closings/${closing.date}/export?format=xlsx`}>
+                      <Button size="sm" variant="outline">
+                        Excel
+                      </Button>
+                    </a>
+                    <Link href={`/caixa/fechamentos/${closing.date}?print=1`}>
+                      <Button size="sm" variant="outline">
+                        PDF
+                      </Button>
+                    </Link>
+                    <a href={`/api/cash/closings/${closing.date}/export?format=csv`}>
+                      <Button size="sm" variant="outline">
+                        Exportar
+                      </Button>
+                    </a>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-amber-300 text-amber-800 hover:bg-amber-50"
+                      disabled={reopenLoading}
+                      onClick={() => void reopenCashDay(closing.date)}
+                    >
+                      Reabrir
+                    </Button>
+                  </div>
+                </div>
+              );
+            })
           )}
         </CardContent>
       </Card>

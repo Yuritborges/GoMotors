@@ -44,8 +44,9 @@ export async function GET(request: Request, { params }: Params) {
         ? partner.entries.filter((e) => e.date >= from && e.date <= to)
         : partner.entries;
 
-    const washAllTime = partner.orders.reduce((s, o) => s + o.total, 0);
-    const washTotal = periodOrders.reduce((s, o) => s + o.total, 0);
+    const washTotal = periodOrders
+      .filter((o) => o.paymentStatus === "PENDENTE")
+      .reduce((s, o) => s + o.total, 0);
 
     return NextResponse.json({
       id: partner.id,
@@ -53,7 +54,7 @@ export async function GET(request: Request, { params }: Params) {
       active: partner.active,
       phone: partner.phone,
       notes: partner.notes,
-      balance: computePartnerBalance(partner.entries, washAllTime),
+      balance: computePartnerBalance(partner.entries, partner.orders),
       periodSummary: {
         ...summarizePartnerEntries(periodEntries),
         washTotal,

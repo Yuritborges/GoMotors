@@ -9,49 +9,123 @@ export function normalizePlate(raw: unknown): string | null {
   return plate;
 }
 
-export function parseExcelDate(value: unknown): Date | null {
+const SHEET_MONTH_INDEX: Record<string, number> = {
+  JANEIRO: 0,
+  FEVEREIRO: 1,
+  MARCO: 2,
+  MARÇO: 2,
+  ABRIL: 3,
+  MAIO: 4,
+  JUNHO: 5,
+  JULHO: 6,
+  AGOSTO: 7,
+  SETEMBRO: 8,
+  OUTUBRO: 9,
+  NOVEMBRO: 10,
+  DEZEMBRO: 11,
+};
+
+function normalizeSheetKey(name: string) {
+  return name
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function fixLegacyYear(date: Date, fileYear = 2026): Date {
+  const year = date.getFullYear();
+  if (year >= 2001 && year <= 2005) {
+    return new Date(fileYear, date.getMonth(), date.getDate());
+  }
+  if (year > fileYear + 1 || year < fileYear - 1) {
+    return new Date(fileYear, date.getMonth(), date.getDate());
+  }
+  return date;
+}
+
+/** Planilhas ROTATIVO usam M/D/YY (Excel US) e abas por mês — força mês da aba. */
+export function parseRotativoDate(
+  value: unknown,
+  sheetName: string,
+  fileYear = 2026
+): Date | null {
+  const sheetMonth = SHEET_MONTH_INDEX[normalizeSheetKey(sheetName)];
+
+  if (typeof value === "string") {
+    const s = value.trim();
+    const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (slash) {
+      const monthPart = parseInt(slash[1], 10);
+      const dayPart = parseInt(slash[2], 10);
+      let year = parseInt(slash[3], 10);
+      if (year < 100) year += year >= 50 ? 1900 : 2000;
+
+      if (sheetMonth !== undefined) {
+        return new Date(fileYear, sheetMonth, dayPart);
+      }
+
+      // Formato US M/D/YY das planilhas Go Motors
+      return new Date(year, monthPart - 1, dayPart);
+    }
+  }
+
+  const parsed = parseExcelDate(value, fileYear);
+  if (!parsed) return null;
+
+  if (sheetMonth !== undefined) {
+    return new Date(fileYear, sheetMonth, parsed.getDate());
+  }
+
+  return parsed;
+}
+
+export function parseExcelDate(value: unknown, fileYear = 2026): Date | null {
   if (value == null || value === "") return null;
 
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    const fixed = new Date(value);
-    const year = fixed.getFullYear();
-    // xlsx interpreta algumas células de 2026 como 2001–2005
-    if (year >= 2001 && year <= 2005) {
-      fixed.setFullYear(2026);
-    }
-    return fixed;
+    return fixLegacyYear(new Date(value), fileYear);
   }
 
   if (typeof value === "number" && Number.isFinite(value)) {
     const excelEpoch = new Date(1899, 11, 30);
     const parsed = new Date(excelEpoch.getTime() + value * 86_400_000);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    return Number.isNaN(parsed.getTime()) ? null : fixLegacyYear(parsed, fileYear);
   }
 
   const s = String(value).trim();
-  const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-  if (br) {
-    let year = parseInt(br[3], 10);
+  const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (slash) {
+    const monthPart = parseInt(slash[1], 10);
+    const dayPart = parseInt(slash[2], 10);
+    let year = parseInt(slash[3], 10);
     if (year < 100) year += year >= 50 ? 1900 : 2000;
-    const parsed = new Date(year, parseInt(br[2], 10) - 1, parseInt(br[1], 10));
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    return new Date(year, monthPart - 1, dayPart);
   }
 
   const parsed = new Date(s);
   if (Number.isNaN(parsed.getTime())) return null;
-  if (parsed.getFullYear() >= 2001 && parsed.getFullYear() <= 2005) {
-    parsed.setFullYear(2026);
-  }
-  return parsed;
+  return fixLegacyYear(parsed, fileYear);
 }
 
 export function parseAmount(value: unknown): number {
   if (value == null || value === "") return 0;
   let s = String(value).trim().replace(/R\$\s?/gi, "").trim();
   if (s.includes(",") && s.includes(".")) {
-    s = s.replace(/\./g, "").replace(",", ".");
+    const lastComma = s.lastIndexOf(",");
+    const lastDot = s.lastIndexOf(".");
+    if (lastDot > lastComma) {
+      s = s.replace(/,/g, "");
+    } else {
+      s = s.replace(/\./g, "").replace(",", ".");
+    }
   } else if (s.includes(",") && !s.includes(".")) {
-    s = s.replace(",", ".");
+    const parts = s.split(",");
+    if (parts.length === 2 && parts[1]!.length === 3 && !parts[1]!.includes(".")) {
+      s = parts.join("");
+    } else {
+      s = s.replace(",", ".");
+    }
   }
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
@@ -94,6 +168,19 @@ export function inferVehicleType(model: unknown): VehicleTypeImport {
   if (CAMINHONETE_MODELS.test(m)) return "CAMINHONETE";
   if (SUV_MODELS.test(m)) return "SUV";
   return "CARRO";
+}
+
+export function resolveImportPaymentStatus(row: {
+  isPartner?: boolean;
+  partnerPaid?: boolean;
+  payment: PaymentMethod;
+  amount: number;
+}): "PAGO" | "PENDENTE" {
+  if (row.amount <= 0) return "PENDENTE";
+  if (row.partnerPaid) return "PAGO";
+  if (row.isPartner) return "PENDENTE";
+  if (row.payment === "PENDENTE" || row.payment === "PAGAR_DEPOIS") return "PENDENTE";
+  return "PAGO";
 }
 
 export function mapPayment(raw: unknown): PaymentMethod {

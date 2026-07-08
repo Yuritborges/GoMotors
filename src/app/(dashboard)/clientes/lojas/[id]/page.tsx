@@ -7,6 +7,7 @@ import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import {
   PARTNER_ENTRY_HINTS,
   PARTNER_ENTRY_LABELS,
+  isManualLedgerPartner,
 } from "@/lib/partner-ledger";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,7 @@ export default function LojaParceiraDetailPage() {
   const [data, setData] = useState<PartnerDetail | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
+  const [zeroing, setZeroing] = useState(false);
 
   const load = useCallback(async () => {
     const [y, m] = month.split("-").map(Number);
@@ -104,6 +106,26 @@ export default function LojaParceiraDetailPage() {
   async function deleteEntry(entryId: string) {
     if (!confirm("Excluir este lançamento?")) return;
     await fetch(`/api/partners/${id}/entries/${entryId}`, { method: "DELETE" });
+    load();
+  }
+
+  async function zeroBalance() {
+    if (!data) return;
+    const msg =
+      data.balance > 0
+        ? `Registrar pagamento de ${formatCurrency(data.balance)} para zerar o saldo de ${data.name}?`
+        : `Registrar ajuste de ${formatCurrency(Math.abs(data.balance))} para zerar o saldo de ${data.name}?`;
+    if (!confirm(msg)) return;
+
+    setZeroing(true);
+    setError("");
+    const res = await fetch(`/api/partners/${id}/zero-balance`, { method: "POST" });
+    const json = await res.json();
+    setZeroing(false);
+    if (!res.ok) {
+      setError(json.error ?? "Erro ao zerar saldo");
+      return;
+    }
     load();
   }
 
@@ -168,10 +190,38 @@ export default function LojaParceiraDetailPage() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Saldo a receber" value={formatCurrency(data.balance)} highlight="amber" />
-        <StatCard label="Lavagens (mês)" value={formatCurrency(data.periodSummary.washTotal)} />
+        <StatCard label="Lavagens pendentes (mês)" value={formatCurrency(data.periodSummary.washTotal)} />
         <StatCard label="Dívidas/produtos (mês)" value={formatCurrency(data.periodSummary.ledgerDebit)} />
         <StatCard label="Pagamentos (mês)" value={formatCurrency(data.periodSummary.ledgerCredit)} highlight="green" />
       </div>
+
+      {Math.abs(data.balance) >= 0.01 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3">
+          <p className="text-sm text-sky-900">
+            Saldo atual: <strong>{formatCurrency(data.balance)}</strong>
+            {data.balance < 0 && " (a loja tem crédito — pagou a mais ou lançamentos antigos)"}
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={zeroing}
+            onClick={() => void zeroBalance()}
+          >
+            {zeroing ? "Zerando..." : "Zerar saldo"}
+          </Button>
+        </div>
+      )}
+
+      {error && (
+        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>
+      )}
+
+      {isManualLedgerPartner(data.name) && (
+        <p className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+          Dívidas e produtos desta loja são lançados manualmente no sistema (não vêm da planilha).
+        </p>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

@@ -35,8 +35,9 @@ export async function GET(request: Request) {
             ? p.entries.filter((e) => e.date >= from && e.date <= to)
             : p.entries;
 
-        const washTotal = periodOrders.reduce((s, o) => s + o.total, 0);
-        const washAllTime = p.orders.reduce((s, o) => s + o.total, 0);
+        const washTotal = periodOrders
+          .filter((o) => o.paymentStatus === "PENDENTE")
+          .reduce((s, o) => s + o.total, 0);
         const summary = summarizePartnerEntries(periodEntries);
 
         return {
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
           notes: p.notes,
           orderCount: periodOrders.length,
           washTotal,
-          balance: computePartnerBalance(p.entries, washAllTime),
+          balance: computePartnerBalance(p.entries, p.orders),
           periodSummary: { ...summary, washTotal },
           entryCount: periodEntries.length,
         };

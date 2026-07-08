@@ -10,7 +10,7 @@ export async function PUT(request: Request, { params }: Params) {
     const { id } = await params;
     const body = await request.json();
 
-    const data: { name?: string; active?: boolean } = {};
+    const data: { name?: string; active?: boolean; salary?: number } = {};
     if (body.name !== undefined) {
       const name = String(body.name).trim();
       if (!name) {
@@ -19,6 +19,13 @@ export async function PUT(request: Request, { params }: Params) {
       data.name = name;
     }
     if (body.active !== undefined) data.active = Boolean(body.active);
+    if (body.salary !== undefined) {
+      const salary = Number(body.salary);
+      if (!Number.isFinite(salary) || salary < 0) {
+        return NextResponse.json({ error: "Salário inválido" }, { status: 400 });
+      }
+      data.salary = salary;
+    }
 
     const employee = await prisma.employee.update({
       where: { id },

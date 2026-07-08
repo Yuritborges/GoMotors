@@ -18,6 +18,16 @@ export const PARTNER_ENTRY_HINTS: Record<PartnerEntryType, string> = {
 
 type Entry = { type: PartnerEntryType; amount: number };
 
+/** Lojas cujo saldo de dívidas é lançado manualmente (não importar ledger da planilha). */
+export function isManualLedgerPartner(name: string): boolean {
+  const n = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+  return n.includes("MAGRAO");
+}
+
 /** Saldo positivo = loja deve ao Go Motors */
 export function partnerBalanceDelta(type: PartnerEntryType, amount: number): number {
   switch (type) {
@@ -31,9 +41,31 @@ export function partnerBalanceDelta(type: PartnerEntryType, amount: number): num
   }
 }
 
-export function computePartnerBalance(entries: Entry[], washTotal = 0): number {
+export function sumPendingPartnerWashes(
+  orders: { total: number; paymentStatus: string }[]
+): number {
+  return orders
+    .filter((o) => o.paymentStatus === "PENDENTE")
+    .reduce((sum, o) => sum + o.total, 0);
+}
+
+/** Saldo = lavagens pendentes (bloco em aberto) + ledger (produtos/dívidas avulsas). */
+export function computePartnerBalance(
+  entries: Entry[],
+  orders: { total: number; paymentStatus: string }[]
+): number {
+  const pendingWash = sumPendingPartnerWashes(orders);
   const ledger = entries.reduce((sum, e) => sum + partnerBalanceDelta(e.type, e.amount), 0);
-  return washTotal + ledger;
+  return pendingWash + ledger;
+}
+
+/** Lançamento que zera o saldo atual (positivo → pagamento; negativo → ajuste). */
+export function ledgerEntryToZeroBalance(
+  balance: number
+): { type: PartnerEntryType; amount: number } | null {
+  if (Math.abs(balance) < 0.01) return null;
+  if (balance > 0) return { type: "PAGAMENTO", amount: Math.round(balance * 100) / 100 };
+  return { type: "AJUSTE", amount: Math.round(-balance * 100) / 100 };
 }
 
 export function summarizePartnerEntries(entries: Entry[]) {

@@ -65,6 +65,7 @@ enum EmployeeTransactionType {
   VALE
   REEMBOLSO
   DESCONTO
+  PAGAMENTO_SALARIO
 }
 
 enum PartnerEntryType {
@@ -189,6 +190,7 @@ model Vehicle {
 model Employee {
   id        String   @id @default(cuid())
   name      String
+  salary    Float    @default(0)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -196,6 +198,16 @@ model Employee {
   orders       ServiceOrder[]
   orderItems   OrderItem[]
   transactions EmployeeTransaction[]
+}
+
+model CashClosing {
+  id        String   @id @default(cuid())
+  date      DateTime @unique
+  closedBy  String
+  snapshot  Json
+  createdAt DateTime @default(now())
+
+  @@index([date])
 }
 
 model EmployeeTransaction {

@@ -1,10 +1,11 @@
 /**
  * Importação completa das planilhas Go Motors → Neon/Postgres
- * Uso: npm run db:import
+ * Uso: npm run db:import  (pode rodar de qualquer pasta)
  */
-import "dotenv/config";
+import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as XLSX from "xlsx";
 import bcrypt from "bcryptjs";
 import { createPrismaClient } from "../src/lib/create-prisma";
@@ -22,11 +23,77 @@ import {
   normalizePlate,
   parseAmount,
   parseExcelDate,
+  parseRotativoDate,
+  resolveImportPaymentStatus,
   serviceCategory,
 } from "./import-utils";
 
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+dotenv.config({ path: path.join(PROJECT_ROOT, ".env") });
+
+const DADOS = path.join(PROJECT_ROOT, "dados");
+
+const DATA_FILE_ALIASES: Record<string, string[]> = {
+  rotativo: ["ROTATIVO 2026.xlsx", "ROTATIVO 2026 (1).xlsx"],
+  lojas: ["LOJAS 2026.xlsx", "LOJAS 2026 (1).xlsx"],
+  gastos: ["GASTOS LAVA RAPIDO 2026.xlsx", "GASTOS LAVA RAPIDO 2026 (1).xlsx"],
+  colaboradores: [
+    "COLABORADORES 2026.xlsx",
+    "COLABORADORES.xlsx",
+    "COLABORADORES (2).xlsx",
+  ],
+};
+
+function resolveDataFile(key: keyof typeof DATA_FILE_ALIASES): string {
+  const aliases = DATA_FILE_ALIASES[key];
+  for (const name of aliases) {
+    const full = path.join(DADOS, name);
+    if (fs.existsSync(full)) return full;
+  }
+
+  const files = fs.existsSync(DADOS)
+    ? fs.readdirSync(DADOS).filter((f) => f.toLowerCase().endsWith(".xlsx"))
+    : [];
+  const token = key === "gastos" ? "GASTOS" : key === "colaboradores" ? "COLABORADORES" : key.toUpperCase();
+  const fuzzy = files.find((f) => f.toUpperCase().includes(token));
+  if (fuzzy) return path.join(DADOS, fuzzy);
+
+  throw new Error(
+    `Planilha obrigatória ausente: dados/${aliases[0]} (ou similar com "${token}" no nome)`
+  );
+}
+
 const prisma = createPrismaClient();
-const DADOS = path.join(process.cwd(), "dados");
+
+function assertDatabaseConfigured() {
+  const url = process.env.DATABASE_URL ?? "";
+  const looksLikePlaceholder =
+    !url ||
+    url.includes("USER:PASSWORD") ||
+    url.includes("@ep-xxx") ||
+    url.includes("ep-xxx");
+
+  if (looksLikePlaceholder) {
+    console.error(`
+[import] DATABASE_URL não está configurada no .env da raiz do projeto.
+
+O arquivo ${path.join(PROJECT_ROOT, ".env")} ainda tem valores de exemplo.
+
+Como corrigir:
+  1. Abra https://console.neon.tech → projeto Go Motors → Connection string
+  2. Copie a URL com "-pooler" → DATABASE_URL
+  3. Copie a URL direta (sem pooler) → DIRECT_URL
+  4. Cole no .env (substitua USER:PASSWORD@ep-xxx)
+
+Ou copie de https://vercel.com → projeto → Settings → Environment Variables
+
+Depois rode:
+  cd ${PROJECT_ROOT}
+  npm run db:import
+`);
+    process.exit(1);
+  }
+}
 
 type RotativoRow = {
   date: Date;
@@ -40,6 +107,8 @@ type RotativoRow = {
   source: string;
   isPartner?: boolean;
   partnerName?: string;
+  /** Bloco da planilha LOJAS já quitado (subtotal verde). */
+  partnerPaid?: boolean;
 };
 
 type VehicleSeed = {
@@ -50,8 +119,8 @@ type VehicleSeed = {
   partner?: string;
 };
 
-function readSheet(file: string, sheet: string) {
-  const wb = XLSX.readFile(path.join(DADOS, file), { cellDates: true });
+function readSheet(filePath: string, sheet: string) {
+  const wb = XLSX.readFile(filePath, { cellDates: true });
   return XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[sheet], {
     defval: null,
     raw: false,
@@ -59,7 +128,7 @@ function readSheet(file: string, sheet: string) {
 }
 
 function readRotativo(): RotativoRow[] {
-  const wb = XLSX.readFile(path.join(DADOS, "ROTATIVO 2026.xlsx"), { cellDates: true });
+  const wb = XLSX.readFile(resolveDataFile("rotativo"), { cellDates: true });
   const rows: RotativoRow[] = [];
 
   for (const sheet of wb.SheetNames) {
@@ -70,7 +139,7 @@ function readRotativo(): RotativoRow[] {
     for (let i = 2; i < data.length; i++) {
       const r = data[i];
       if (!r || !r[0]) continue;
-      const date = parseExcelDate(r[0]);
+      const date = parseRotativoDate(r[0], sheet);
       const model = cleanModelName(r[1]);
       const plate = normalizePlate(r[2]);
       const serviceRaw = String(r[3] ?? "").trim();
@@ -93,8 +162,24 @@ function readRotativo(): RotativoRow[] {
   return rows;
 }
 
+function isManualLedgerPartner(name: string): boolean {
+  const n = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+  return n.includes("MAGRAO");
+}
+
+function lojasDataStartRow(data: (string | number | Date | null)[][]): number {
+  const first = data[0];
+  if (!first) return 1;
+  if (parseExcelDate(first[0]) && String(first[3] ?? "").trim()) return 0;
+  return 1;
+}
+
 function readLojas(): RotativoRow[] {
-  const wb = XLSX.readFile(path.join(DADOS, "LOJAS 2026.xlsx"), { cellDates: true });
+  const wb = XLSX.readFile(resolveDataFile("lojas"), { cellDates: true });
   const rows: RotativoRow[] = [];
 
   for (const sheet of wb.SheetNames) {
@@ -103,35 +188,95 @@ function readLojas(): RotativoRow[] {
       wb.Sheets[sheet],
       { header: 1, defval: null, raw: false }
     );
-    for (let i = 1; i < data.length; i++) {
-      const r = data[i];
-      if (!r || !r[0]) continue;
-      const date = parseExcelDate(r[0]);
-      const model = cleanModelName(r[1]);
-      const plate = normalizePlate(r[2]);
+    const startRow = lojasDataStartRow(data);
+    const manualPartner = isManualLedgerPartner(partner);
+
+    type Wash = { row: RotativoRow };
+    let block: Wash[] = [];
+    let hadClosedBlock = false;
+
+    function isEmptyRow(r: (string | number | Date | null)[]) {
       const serviceRaw = String(r[3] ?? "").trim();
       const amount = parseAmount(r[4]);
-      if (!date || !serviceRaw) continue;
-      rows.push({
-        date,
-        model,
-        plate,
-        serviceRaw,
-        service: canonicalService(serviceRaw),
-        amount,
-        paymentRaw: partner,
-        payment: "PENDENTE",
-        source: `LOJAS/${partner}`,
-        isPartner: true,
-        partnerName: partner,
-      });
+      if (serviceRaw || amount > 0) return false;
+      const extras = [r[5], r[6], r[7], r[8], r[9]].some((c) => String(c ?? "").trim());
+      return !extras;
     }
+
+    function flushBlock(closed: boolean) {
+      if (block.length === 0) return;
+      if (closed) hadClosedBlock = true;
+
+      const onlyLastPending =
+        !closed && hadClosedBlock && block.length > 1 && block.length <= 4;
+
+      for (let i = 0; i < block.length; i++) {
+        const { row } = block[i]!;
+        const paid = manualPartner
+          ? true
+          : closed || (onlyLastPending && i < block.length - 1);
+        row.partnerPaid = paid;
+        row.payment = paid ? "PIX" : "PENDENTE";
+        rows.push(row);
+      }
+      block = [];
+    }
+
+    for (let i = startRow; i < data.length; i++) {
+      const r = data[i];
+      if (!r) continue;
+      const date = parseExcelDate(r[0]);
+      const serviceRaw = String(r[3] ?? "").trim();
+      const amount = parseAmount(r[4]);
+
+      if (date && serviceRaw) {
+        const model = cleanModelName(r[1]);
+        const plate = normalizePlate(r[2]);
+        block.push({
+          row: {
+            date,
+            model,
+            plate,
+            serviceRaw,
+            service: canonicalService(serviceRaw),
+            amount,
+            paymentRaw: partner,
+            payment: "PENDENTE",
+            source: `LOJAS/${partner}`,
+            isPartner: true,
+            partnerName: partner,
+          },
+        });
+        continue;
+      }
+
+      if (isEmptyRow(r)) {
+        flushBlock(true);
+        continue;
+      }
+
+      if (!serviceRaw && amount > 0) {
+        flushBlock(true);
+      }
+    }
+
+    flushBlock(false);
   }
+
   return rows;
 }
 
+function summarizeOpenPartnerWashes(lojas: RotativoRow[]): Map<string, number> {
+  const open = new Map<string, number>();
+  for (const row of lojas) {
+    if (!row.partnerName || row.partnerPaid) continue;
+    open.set(row.partnerName, (open.get(row.partnerName) ?? 0) + row.amount);
+  }
+  return open;
+}
+
 function readGastos(): { date: Date; description: string; amount: number }[] {
-  const wb = XLSX.readFile(path.join(DADOS, "GASTOS LAVA RAPIDO 2026.xlsx"), {
+  const wb = XLSX.readFile(resolveDataFile("gastos"), {
     cellDates: true,
   });
   const rows: { date: Date; description: string; amount: number }[] = [];
@@ -206,7 +351,7 @@ function inferPartnerEntryType(description: string, installment: string | null):
   return "DIVIDA";
 }
 
-function readPartnerLedger(): {
+function readPartnerLedger(openPartners: Set<string>): {
   partnerName: string;
   date: Date;
   type: "DIVIDA" | "PRODUTO" | "PARCELA" | "PAGAMENTO" | "AJUSTE";
@@ -214,11 +359,13 @@ function readPartnerLedger(): {
   description: string;
   installment: string | null;
 }[] {
-  const wb = XLSX.readFile(path.join(DADOS, "LOJAS 2026.xlsx"), { cellDates: true });
+  const wb = XLSX.readFile(resolveDataFile("lojas"), { cellDates: true });
   const rows: ReturnType<typeof readPartnerLedger> = [];
 
   for (const sheet of wb.SheetNames) {
     const partnerName = sheet.trim();
+    if (isManualLedgerPartner(partnerName)) continue;
+
     const data = XLSX.utils.sheet_to_json<(string | number | Date | null)[]>(
       wb.Sheets[sheet],
       { header: 1, defval: null, raw: false }
@@ -227,18 +374,57 @@ function readPartnerLedger(): {
     for (let i = 0; i < data.length; i++) {
       const r = data[i];
       if (!r) continue;
-      const label = String(r[7] ?? "").trim();
-      if (!label || label.toUpperCase().includes("DÍVIDAS E CART")) continue;
 
+      const serviceRaw = String(r[3] ?? "").trim();
+      const hasWash = Boolean(parseExcelDate(r[0]) && serviceRaw);
+      const col6 = String(r[6] ?? "").trim();
+      const col7 = String(r[7] ?? "").trim();
+      const col8 = String(r[8] ?? "").trim();
       const installment = r[9] ? String(r[9]).trim() : null;
-      const extra = r[8] ? String(r[8]).trim() : "";
-      const description = [label, extra].filter(Boolean).join(" · ").slice(0, 300);
-      let amount = parseAmount(r[4]) || parseAmount(r[8]) || extractAmountFromText(description);
-      if (amount <= 0) amount = extractAmountFromText(extra) || extractAmountFromText(label);
+
+      if (hasWash && col6 && !col7 && !col8) {
+        const washAmount = parseAmount(r[4]);
+        const noteAmount = extractAmountFromText(col6);
+        const col6IsOnlyWashPrice =
+          noteAmount > 0 &&
+          Math.abs(noteAmount - washAmount) < 0.01 &&
+          /^R?\$?\s*[\d.,]+$/.test(col6.replace(/\s/g, ""));
+        const isProductNote = /faixa|volante|feltro|espum|coifa|bola|motorista/i.test(col6);
+        if (!col6IsOnlyWashPrice && isProductNote && noteAmount > 0) {
+          const type = inferPartnerEntryType(col6, installment);
+          rows.push({
+            partnerName,
+            date: parseExcelDate(r[0]) ?? new Date(2026, 0, 15),
+            type,
+            amount: noteAmount,
+            description: col6.slice(0, 300),
+            installment,
+          });
+        }
+        continue;
+      }
+
+      if (hasWash) continue;
+
+      const label = [col6, col7, col8]
+        .filter((part) => part && !part.toUpperCase().includes("DÍVIDAS E CART"))
+        .join(" · ")
+        .trim();
+      if (!label) continue;
+
+      const description = [label, installment].filter(Boolean).join(" · ").slice(0, 300);
+      let amount =
+        parseAmount(col8) ||
+        parseAmount(col7) ||
+        (!hasWash ? parseAmount(r[4]) : 0) ||
+        extractAmountFromText(description);
+      if (amount <= 0) amount = extractAmountFromText(col8) || extractAmountFromText(label);
       if (amount <= 0) continue;
 
       const date = parseExcelDate(r[0]) ?? new Date(2026, 0, 15);
       const type = inferPartnerEntryType(description, installment);
+      const isDebit = type === "DIVIDA" || type === "PRODUTO" || type === "AJUSTE";
+      if (isDebit && !openPartners.has(partnerName)) continue;
       rows.push({ partnerName, date, type, amount, description, installment });
     }
   }
@@ -246,8 +432,68 @@ function readPartnerLedger(): {
   return rows;
 }
 
+function readColaboradoresSalaries(): Map<string, number> {
+  const salaries = new Map<string, number>();
+  let file: string;
+  try {
+    file = resolveDataFile("colaboradores");
+  } catch {
+    return salaries;
+  }
+
+  const wb = XLSX.readFile(file, { cellDates: true });
+  for (const sheet of wb.SheetNames) {
+    const data = XLSX.utils.sheet_to_json<(string | number | null)[]>(wb.Sheets[sheet], {
+      header: 1,
+      defval: null,
+      raw: false,
+    });
+    for (const row of data) {
+      const label = String(row?.[0] ?? "")
+        .toUpperCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      if (label.includes("SALARIO MENSAL")) {
+        const amount = parseAmount(row?.[1]);
+        if (amount > 0) {
+          salaries.set(sheet.trim().toUpperCase(), amount);
+        }
+        break;
+      }
+    }
+  }
+  return salaries;
+}
+
+function resolveEmployeeSalary(name: string, salaries: Map<string, number>): number {
+  const upper = name.toUpperCase();
+  for (const [key, amount] of salaries.entries()) {
+    const k = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const n = upper.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (k.includes(n) || n.includes(k.split(" ")[0] ?? "")) return amount;
+  }
+  return 0;
+}
+
 function orderKey(r: RotativoRow) {
   return `${r.date.toISOString().slice(0, 10)}|${r.plate ?? ""}|${r.serviceRaw}|${r.amount}`;
+}
+
+function buildPartnerOrderKeyMap(lojas: RotativoRow[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const row of lojas) {
+    if (!row.partnerName) continue;
+    map.set(orderKey(row), row.partnerName);
+  }
+  return map;
+}
+
+function buildPartnerPaidByKey(lojas: RotativoRow[]): Map<string, boolean> {
+  const map = new Map<string, boolean>();
+  for (const row of lojas) {
+    map.set(orderKey(row), row.partnerPaid ?? false);
+  }
+  return map;
 }
 
 function buildVehicleMap(allRows: RotativoRow[]): Map<string, VehicleSeed> {
@@ -325,39 +571,76 @@ async function clearDatabase() {
 }
 
 async function main() {
+  assertDatabaseConfigured();
+
   if (!fs.existsSync(DADOS)) {
     throw new Error(`Pasta não encontrada: ${DADOS}`);
   }
 
-  const requiredFiles = [
-    "ROTATIVO 2026.xlsx",
-    "LOJAS 2026.xlsx",
-    "GASTOS LAVA RAPIDO 2026.xlsx",
-  ];
-  for (const file of requiredFiles) {
-    if (!fs.existsSync(path.join(DADOS, file))) {
-      throw new Error(`Planilha obrigatória ausente: dados/${file}`);
-    }
+  for (const key of ["rotativo", "lojas", "gastos"] as const) {
+    resolveDataFile(key);
+  }
+
+  console.log("Planilhas encontradas:");
+  console.log(`  ROTATIVO → ${path.basename(resolveDataFile("rotativo"))}`);
+  console.log(`  LOJAS → ${path.basename(resolveDataFile("lojas"))}`);
+  console.log(`  GASTOS → ${path.basename(resolveDataFile("gastos"))}`);
+  try {
+    console.log(`  COLABORADORES → ${path.basename(resolveDataFile("colaboradores"))}`);
+  } catch {
+    console.log("  COLABORADORES → (opcional, não encontrada)");
   }
 
   console.log("Lendo planilhas...");
   const rotativo = readRotativo();
   const lojas = readLojas();
+  const openPartnerStores = new Set(summarizeOpenPartnerWashes(lojas).keys());
   const gastosAll = readGastos();
   const employeeVales = gastosAll.filter((g) => matchEmployeeFromVale(g.description));
   const gastos = gastosAll.filter((g) => !isTeamValeExpense(g.description));
-  const partnerLedger = readPartnerLedger();
+  const partnerLedger = readPartnerLedger(openPartnerStores);
+  const colaboradoresSalaries = readColaboradoresSalaries();
   const employeeNames = [...TEAM_EMPLOYEES];
+  const partnerOrderKeys = buildPartnerOrderKeyMap(lojas);
+  const partnerPaidByKey = buildPartnerPaidByKey(lojas);
 
   const rotativoKeys = new Set(rotativo.map(orderKey));
   const lojasDeduped = lojas.filter((r) => !rotativoKeys.has(orderKey(r)));
   const allOrders = [...rotativo, ...lojasDeduped];
 
+  for (const row of allOrders) {
+    const key = orderKey(row);
+    if (!row.partnerName) {
+      const partnerName = partnerOrderKeys.get(key);
+      if (partnerName) row.partnerName = partnerName;
+    }
+    if (partnerPaidByKey.has(key)) {
+      const paid = partnerPaidByKey.get(key)!;
+      row.partnerPaid = paid;
+      if (paid) row.payment = "PIX";
+    }
+  }
+
   console.log(`ROTATIVO: ${rotativo.length} | LOJAS (extras): ${lojasDeduped.length}`);
+  console.log(
+    `Vínculo loja↔rotativo: ${allOrders.filter((r) => r.partnerName).length} ordens`
+  );
   console.log(
     `GASTOS: ${gastos.length} (+ ${employeeVales.length} vales → funcionários) | FUNCIONÁRIOS: ${employeeNames.length}`
   );
   console.log(`LANÇAMENTOS LOJAS: ${partnerLedger.length}`);
+  const openWashes = summarizeOpenPartnerWashes(lojas);
+  if (openWashes.size > 0) {
+    console.log("Saldo lavagens (planilha, exc. Magrão manual):");
+    for (const [name, total] of [...openWashes.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0])
+    )) {
+      console.log(`  ${name}: R$ ${total.toFixed(2)}`);
+    }
+  }
+  if ([...lojas].some((r) => r.partnerName && isManualLedgerPartner(r.partnerName))) {
+    console.log("  MAGRÃO: lavagens históricas importadas — saldo manual no sistema");
+  }
 
   const vehicleMap = buildVehicleMap(allOrders);
   console.log(`Veículos únicos: ${vehicleMap.size}`);
@@ -416,7 +699,15 @@ async function main() {
 
   console.log("Criando funcionários...");
   const employees = await Promise.all(
-    employeeNames.map((name) => prisma.employee.create({ data: { name, active: true } }))
+    employeeNames.map((name) =>
+      prisma.employee.create({
+        data: {
+          name,
+          active: true,
+          salary: resolveEmployeeSalary(name, colaboradoresSalaries),
+        },
+      })
+    )
   );
 
   console.log("Criando catálogo de serviços...");
@@ -508,7 +799,7 @@ async function main() {
 
   console.log("Criando lojas parceiras...");
   const partnerIds = new Map<string, string>();
-  const lojasWb = XLSX.readFile(path.join(DADOS, "LOJAS 2026.xlsx"), { cellDates: true });
+  const lojasWb = XLSX.readFile(resolveDataFile("lojas"), { cellDates: true });
   for (const sheet of lojasWb.SheetNames) {
     const name = sheet.trim();
     const store = await prisma.partnerStore.create({ data: { name, active: true } });
@@ -531,21 +822,11 @@ async function main() {
     });
   }
 
-  console.log("Importando vales da equipe...");
-  const employeeByName = new Map(employees.map((e) => [e.name, e.id]));
-  for (const v of employeeVales) {
-    const name = matchEmployeeFromVale(v.description);
-    const empId = name ? employeeByName.get(name) : undefined;
-    if (!empId) continue;
-    await prisma.employeeTransaction.create({
-      data: {
-        employeeId: empId,
-        type: "VALE",
-        amount: v.amount,
-        date: v.date,
-        description: v.description.slice(0, 200),
-      },
-    });
+  // Vales da equipe são lançados em /funcionarios (não reimportar da planilha GASTOS).
+  if (employeeVales.length > 0) {
+    console.log(
+      `Vales da equipe (${employeeVales.length}) ignorados — use /funcionarios ou npm run db:reset-employee-cycles`
+    );
   }
 
   console.log("Importando despesas...");
@@ -569,7 +850,14 @@ async function main() {
     const clientId = plateToClientId.get(plate)!;
     const serviceId = serviceIds.get(row.service);
     const total = row.amount > 0 ? row.amount : 0;
-    const paid = total > 0;
+    const isPartnerOrder = Boolean(row.isPartner || row.partnerName);
+    const paymentStatus = resolveImportPaymentStatus({
+      isPartner: isPartnerOrder,
+      partnerPaid: row.partnerPaid,
+      payment: row.payment,
+      amount: total,
+    });
+    const isPaid = paymentStatus === "PAGO";
     const partnerStoreId = row.partnerName
       ? partnerIds.get(row.partnerName.trim())
       : undefined;
@@ -584,9 +872,9 @@ async function main() {
         total,
         discount: 0,
         paymentMethod: row.payment,
-        paymentStatus: paid ? "PAGO" : "PENDENTE",
+        paymentStatus,
         notes:
-          row.isPartner
+          isPartnerOrder
             ? `Loja parceira: ${row.paymentRaw} (${row.source})`
             : row.payment === "PENDENTE" && row.paymentRaw
               ? `Ref: ${row.paymentRaw} (${row.source})`
@@ -600,7 +888,7 @@ async function main() {
             price: total,
           },
         },
-        payments: paid
+        payments: isPaid
           ? {
               create: {
                 method: row.payment,

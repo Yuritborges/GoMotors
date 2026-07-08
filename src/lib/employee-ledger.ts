@@ -4,17 +4,19 @@ export const EMPLOYEE_TRANSACTION_LABELS: Record<EmployeeTransactionType, string
   VALE: "Vale",
   REEMBOLSO: "Reembolso",
   DESCONTO: "Desconto",
+  PAGAMENTO_SALARIO: "Pagamento de salário",
 };
 
 export const EMPLOYEE_TRANSACTION_HINTS: Record<EmployeeTransactionType, string> = {
-  VALE: "Adiantamento — reduz o saldo (funcionário deve à empresa)",
-  REEMBOLSO: "Reembolso de despesa — aumenta o saldo (empresa deve ao funcionário)",
-  DESCONTO: "Desconto aplicado — reduz o saldo a favor da empresa",
+  VALE: "Adiantamento — abate do salário do funcionário",
+  REEMBOLSO: "Reembolso de despesa — aumenta o salário restante",
+  DESCONTO: "Desconto — abate do salário do funcionário",
+  PAGAMENTO_SALARIO: "Registra o pagamento do valor devido e zera o restante a pagar",
 };
 
 type Tx = { type: EmployeeTransactionType; amount: number };
 
-/** Saldo acumulado: positivo = empresa deve; negativo = funcionário deve */
+/** @deprecated Use computeSalaryRemaining para exibição de salário */
 export function balanceDelta(type: EmployeeTransactionType, amount: number): number {
   switch (type) {
     case "REEMBOLSO":
@@ -22,18 +24,22 @@ export function balanceDelta(type: EmployeeTransactionType, amount: number): num
     case "VALE":
     case "DESCONTO":
       return -amount;
+    case "PAGAMENTO_SALARIO":
+      return 0;
   }
 }
 
+/** @deprecated Use computeSalaryRemaining */
 export function computeBalance(transactions: Tx[]): number {
   return transactions.reduce((sum, t) => sum + balanceDelta(t.type, t.amount), 0);
 }
 
-/** Impacto no DRE do período (vales e reembolsos = despesa; desconto = redução) */
+/** Impacto no DRE do período */
 export function expenseImpact(type: EmployeeTransactionType, amount: number): number {
   switch (type) {
     case "VALE":
     case "REEMBOLSO":
+    case "PAGAMENTO_SALARIO":
       return amount;
     case "DESCONTO":
       return -amount;
@@ -45,7 +51,7 @@ export function computePeriodEmployeeExpense(transactions: Tx[]): number {
 }
 
 export function summarizeByType(transactions: Tx[]) {
-  const totals = { VALE: 0, REEMBOLSO: 0, DESCONTO: 0 };
+  const totals = { VALE: 0, REEMBOLSO: 0, DESCONTO: 0, PAGAMENTO_SALARIO: 0 };
   for (const t of transactions) {
     totals[t.type] += t.amount;
   }
@@ -53,6 +59,7 @@ export function summarizeByType(transactions: Tx[]) {
     vales: totals.VALE,
     reembolsos: totals.REEMBOLSO,
     descontos: totals.DESCONTO,
+    pagamentosSalario: totals.PAGAMENTO_SALARIO,
     netExpense: computePeriodEmployeeExpense(transactions),
   };
 }

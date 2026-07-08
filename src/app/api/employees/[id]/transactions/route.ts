@@ -2,10 +2,16 @@ import { NextResponse } from "next/server";
 import type { EmployeeTransactionType } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { handleAuthError, requireOwner } from "@/lib/auth";
+import { computeSalaryRemaining } from "@/lib/employee-salary";
 
 type Params = { params: Promise<{ id: string }> };
 
-const VALID_TYPES: EmployeeTransactionType[] = ["VALE", "REEMBOLSO", "DESCONTO"];
+const VALID_TYPES: EmployeeTransactionType[] = [
+  "VALE",
+  "REEMBOLSO",
+  "DESCONTO",
+  "PAGAMENTO_SALARIO",
+];
 
 export async function POST(request: Request, { params }: Params) {
   try {
@@ -18,8 +24,24 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Tipo inválido" }, { status: 400 });
     }
 
-    const amount = Number(body.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    let amount = Number(body.amount);
+    if (type === "PAGAMENTO_SALARIO") {
+      const employee = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        include: { transactions: true },
+      });
+      if (!employee) {
+        return NextResponse.json({ error: "Funcionário não encontrado" }, { status: 404 });
+      }
+      const remaining = computeSalaryRemaining(employee.salary, employee.transactions);
+      amount = remaining > 0 ? remaining : employee.salary;
+      if (amount <= 0) {
+        return NextResponse.json(
+          { error: "Defina o salário base do funcionário antes de registrar pagamento." },
+          { status: 400 }
+        );
+      }
+    } else if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json({ error: "Valor inválido" }, { status: 400 });
     }
 
