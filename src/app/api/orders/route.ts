@@ -83,6 +83,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
   }
 
+  let partnerStoreId: string | null = null;
+  if (body.partnerStoreId) {
+    const store = await prisma.partnerStore.findUnique({
+      where: { id: body.partnerStoreId },
+    });
+    if (!store) {
+      return NextResponse.json(
+        { error: "Loja parceira não encontrada." },
+        { status: 404 }
+      );
+    }
+    partnerStoreId = store.id;
+  }
+
   if (!retroactive) {
     const blockingToday = await prisma.serviceOrder.findFirst({
       where: {
@@ -191,6 +205,7 @@ export async function POST(request: Request) {
     data: {
       clientId: body.clientId,
       vehicleId: body.vehicleId,
+      partnerStoreId,
       employeeId: orderEmployeeId,
       status: retroactive ? "ENTREGUE" : "AGUARDANDO",
       subtotal,
@@ -244,6 +259,7 @@ export async function POST(request: Request) {
       total,
       paymentMethod,
       retroactive,
+      partnerStoreId,
       entryAt: entryAt.toISOString(),
     },
   });
