@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { endOfDay, startOfDay } from "@/lib/utils";
+import { businessDayBounds, businessDateKey, parseBusinessDateInput } from "@/lib/business-day";
 import { isDeferredPaymentMethod } from "@/lib/payments";
 import { isImportedHistoricalOrder } from "@/lib/imported-orders";
 import { buildLaneBreakdown } from "@/lib/lane-breakdown";
@@ -65,22 +65,20 @@ function dateLabelFor(d: Date) {
 
 export function parseCashDateParam(dateParam?: string | null): Date {
   if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
-    return new Date(`${dateParam}T12:00:00`);
+    return parseBusinessDateInput(dateParam);
   }
-  return new Date();
+  return parseBusinessDateInput(businessDateKey());
 }
 
 export function cashDateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return businessDateKey(d);
 }
 
 export async function buildDailyCashReport(dateParam?: string | null): Promise<DailyCashReport> {
-  const day = parseCashDateParam(dateParam);
-  const start = startOfDay(day);
-  const end = endOfDay(day);
+  const dateKey =
+    dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : businessDateKey();
+  const day = parseBusinessDateInput(dateKey);
+  const { start, end } = businessDayBounds(dateKey);
 
   const [orders, expenses, employeeTransactions] = await Promise.all([
     prisma.serviceOrder.findMany({
@@ -171,7 +169,7 @@ export async function buildDailyCashReport(dateParam?: string | null): Promise<D
     .reduce((sum, o) => sum + o.total, 0);
 
   return {
-    date: cashDateKey(day),
+    date: dateKey,
     dateLabel: dateLabelFor(day),
     totalSold,
     totalDiscounts,

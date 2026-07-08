@@ -1,6 +1,7 @@
 import type { EmployeeTransactionType } from "@/generated/prisma/client";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { computeSalaryRemaining } from "@/lib/employee-salary";
+import { businessDateKey, parseBusinessDateInput } from "@/lib/business-day";
 
 export const CYCLE_CLOSE_DESCRIPTION = "Fechamento de ciclo — quitado";
 
@@ -20,6 +21,7 @@ export async function closeEmployeeSalaryCycle(
   paidAt = new Date()
 ): Promise<CloseCycleResult> {
   const historyCount = employee.transactions.length;
+  const paidDate = parseBusinessDateInput(businessDateKey(paidAt));
 
   if (employee.salary <= 0) {
     return { name: employee.name, status: "skipped", reason: "sem salário base", historyCount };
@@ -35,7 +37,7 @@ export async function closeEmployeeSalaryCycle(
       employeeId: employee.id,
       type: "PAGAMENTO_SALARIO",
       amount: remaining,
-      date: paidAt,
+      date: paidDate,
       description: CYCLE_CLOSE_DESCRIPTION,
     },
   });

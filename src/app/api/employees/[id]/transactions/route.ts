@@ -3,6 +3,7 @@ import type { EmployeeTransactionType } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { handleAuthError, requireOwner } from "@/lib/auth";
 import { computeSalaryRemaining } from "@/lib/employee-salary";
+import { parseBusinessDateInput } from "@/lib/business-day";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -56,7 +57,7 @@ export async function POST(request: Request, { params }: Params) {
         type,
         amount,
         description: body.description ? String(body.description).trim().slice(0, 200) : null,
-        date: body.date ? new Date(body.date) : new Date(),
+        date: parseBusinessDateInput(body.date),
       },
     });
 

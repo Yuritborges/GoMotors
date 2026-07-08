@@ -243,7 +243,6 @@ export default function FuncionariosPage() {
       body: JSON.stringify({
         type: "PAGAMENTO_SALARIO",
         description: "Fechamento de ciclo — quitado",
-        date: new Date().toISOString().slice(0, 10),
       }),
     });
     const data = await res.json();
