@@ -44,9 +44,9 @@ export function computeSalaryDeducted(baseSalary: number, transactions: Tx[]): n
 }
 
 /** Lançamentos desde o último pagamento de salário (ciclo em aberto). */
-export function transactionsInCurrentCycle(transactions: Tx[]): Tx[] {
+export function transactionsInCurrentCycle<T extends Tx>(transactions: T[]): T[] {
   const sorted = [...transactions].sort((a, b) => b.date.getTime() - a.date.getTime());
-  const cycle: Tx[] = [];
+  const cycle: T[] = [];
   for (const t of sorted) {
     if (t.type === "PAGAMENTO_SALARIO") break;
     cycle.push(t);
