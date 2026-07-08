@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleAuthError, requireOwner } from "@/lib/auth";
 import { buildDailyCashReport } from "@/lib/cash-report";
-import { startOfDay } from "@/lib/utils";
+import { findCashClosingByDateKey } from "@/lib/cash-closing-date";
 import type { DailyCashReport } from "@/lib/cash-report";
 import {
   EXPENSE_CATEGORY_LABELS,
@@ -12,11 +12,6 @@ import {
 } from "@/lib/constants";
 
 type Params = { params: Promise<{ date: string }> };
-
-function parseDateParam(date: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  return startOfDay(new Date(`${date}T12:00:00`));
-}
 
 function csvLine(cols: (string | number)[]) {
   return cols
@@ -37,12 +32,11 @@ export async function GET(request: Request, { params }: Params) {
     const { searchParams } = new URL(request.url);
     const format = searchParams.get("format") ?? "csv";
 
-    const dayStart = parseDateParam(date);
-    if (!dayStart) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return NextResponse.json({ error: "Data inválida" }, { status: 400 });
     }
 
-    const closing = await prisma.cashClosing.findUnique({ where: { date: dayStart } });
+    const closing = await findCashClosingByDateKey(prisma, date);
     const report = closing
       ? (closing.snapshot as DailyCashReport)
       : await buildDailyCashReport(date);

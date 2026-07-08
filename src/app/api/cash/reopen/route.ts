@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleAuthError, requireOwner } from "@/lib/auth";
-import { cashDateKey, parseCashDateParam } from "@/lib/cash-report";
-import { startOfDay } from "@/lib/utils";
+import {
+  findCashClosingByDateKey,
+  normalizeCashDateKey,
+} from "@/lib/cash-closing-date";
 
 export async function POST(request: Request) {
   try {
     await requireOwner();
     const body = await request.json().catch(() => ({}));
     const dateParam = body.date as string | undefined;
-    const day = parseCashDateParam(dateParam);
-    const dateKey = cashDateKey(day);
-    const dayStart = startOfDay(day);
+    const dateKey = normalizeCashDateKey(dateParam);
 
-    const existing = await prisma.cashClosing.findUnique({ where: { date: dayStart } });
+    const existing = await findCashClosingByDateKey(prisma, dateKey);
     if (!existing) {
       return NextResponse.json(
         { error: `O caixa de ${dateKey} não está fechado.` },
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
       );
     }
 
-    await prisma.cashClosing.delete({ where: { date: dayStart } });
+    await prisma.cashClosing.delete({ where: { id: existing.id } });
 
     return NextResponse.json({
       date: dateKey,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleAuthError, requireOwner } from "@/lib/auth";
+import { cashClosingDisplayKey } from "@/lib/cash-closing-date";
 
 export async function GET() {
   try {
@@ -20,7 +21,7 @@ export async function GET() {
     return NextResponse.json(
       closings.map((c) => ({
         id: c.id,
-        date: c.date.toISOString().slice(0, 10),
+        date: cashClosingDisplayKey(c.date),
         closedBy: c.closedBy,
         createdAt: c.createdAt.toISOString(),
       }))

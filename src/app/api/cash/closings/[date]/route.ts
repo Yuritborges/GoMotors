@@ -2,26 +2,21 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleAuthError, requireOwner } from "@/lib/auth";
 import { buildDailyCashReport } from "@/lib/cash-report";
-import { startOfDay } from "@/lib/utils";
+import { findCashClosingByDateKey } from "@/lib/cash-closing-date";
 import type { DailyCashReport } from "@/lib/cash-report";
 
 type Params = { params: Promise<{ date: string }> };
-
-function parseDateParam(date: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  return startOfDay(new Date(`${date}T12:00:00`));
-}
 
 export async function GET(_request: Request, { params }: Params) {
   try {
     await requireOwner();
     const { date } = await params;
-    const dayStart = parseDateParam(date);
-    if (!dayStart) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return NextResponse.json({ error: "Data inválida" }, { status: 400 });
     }
+    const dateKey = date;
 
-    const closing = await prisma.cashClosing.findUnique({ where: { date: dayStart } });
+    const closing = await findCashClosingByDateKey(prisma, dateKey);
     if (closing) {
       return NextResponse.json({
         closed: true,
@@ -31,7 +26,7 @@ export async function GET(_request: Request, { params }: Params) {
       });
     }
 
-    const report = await buildDailyCashReport(date);
+    const report = await buildDailyCashReport(dateKey);
     return NextResponse.json({ closed: false, report });
   } catch (error) {
     return handleAuthError(error);
