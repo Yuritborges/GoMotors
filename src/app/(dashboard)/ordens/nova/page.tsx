@@ -69,6 +69,7 @@ type Service = {
   id: string;
   name: string;
   defaultPrice: number;
+  estimatedMinutes: number;
   vehiclePrices: { vehicleType: string; price: number }[];
 };
 

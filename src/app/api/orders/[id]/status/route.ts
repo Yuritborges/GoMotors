@@ -67,11 +67,14 @@ export async function PATCH(request: Request, { params }: Params) {
       currentLane = "PRONTO";
     }
 
+    const laneChanged = currentLane !== existing.currentLane;
+
     const order = await prisma.serviceOrder.update({
       where: { id },
       data: {
         status: status as never,
         currentLane,
+        ...(laneChanged ? { laneEnteredAt: new Date() } : {}),
         deliveredAt: status === "ENTREGUE" ? new Date() : undefined,
       },
       include: {

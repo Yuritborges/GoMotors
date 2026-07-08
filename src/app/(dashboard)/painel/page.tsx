@@ -9,6 +9,7 @@ import type { SessionUser } from "@/lib/auth";
 import { PAYMENT_STATUS_LABELS } from "@/lib/constants";
 import { buildOperationalColumns } from "@/lib/display-lanes";
 import type { DisplayOrderInput } from "@/lib/display-lanes-types";
+import { DEFAULT_DISPLAY_LANE_DURATIONS } from "@/lib/shop-settings";
 import { getNextLaneLabel, isOrderInService, resolveOrderLane } from "@/lib/order-lanes";
 import { usePolling } from "@/lib/use-polling";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,10 +30,11 @@ type Order = {
   paymentStatus: string;
   paymentMethod: string;
   entryAt: string;
+  laneEnteredAt?: string;
   client: { id: string; name: string };
   vehicle: { plate: string };
   employee: { name: string } | null;
-  items: { serviceName: string; employee: { name: string } | null }[];
+  items: { serviceName: string; estimatedMinutes?: number; employee: { name: string } | null }[];
 };
 
 export default function PainelPage() {
@@ -156,15 +158,20 @@ export default function PainelPage() {
         id: o.id,
         status: o.status,
         currentLane: o.currentLane,
+        laneEnteredAt: new Date(o.laneEnteredAt ?? o.entryAt),
         client: o.client,
         vehicle: o.vehicle,
-        items: o.items,
+        items: o.items.map((item) => ({
+          serviceName: item.serviceName,
+          estimatedMinutes: item.estimatedMinutes ?? 20,
+          employee: item.employee,
+        })),
       })),
     [orders]
   );
 
   const columns = useMemo(
-    () => buildOperationalColumns(boardOrders),
+    () => buildOperationalColumns(boardOrders, DEFAULT_DISPLAY_LANE_DURATIONS),
     [boardOrders]
   );
 

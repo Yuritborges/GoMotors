@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import { cn } from "@/lib/utils";
 import { usePolling } from "@/lib/use-polling";
+import { BUSINESS_TIMEZONE } from "@/lib/business-day";
+import { formatElapsedTimer, isLaneOverdue } from "@/lib/order-lane-duration";
 
 type DisplayEntry = {
   orderId: string;
@@ -11,6 +14,8 @@ type DisplayEntry = {
   serviceName: string;
   employeeName: string | null;
   queuePosition?: number;
+  laneEnteredAt: string;
+  estimatedMinutes: number;
 };
 
 type DisplayColumn = {
@@ -59,21 +64,40 @@ function LaneCard({
   entry,
   lane,
   compact,
+  now,
 }: {
   entry: DisplayEntry;
   lane: string;
   compact?: boolean;
+  now: Date;
 }) {
   const isQueue = lane === "AGUARDANDO";
   const isReady = lane === "PRONTO";
   const showEmployee = !isQueue && !isReady;
+  const showTimer = entry.estimatedMinutes > 0 && !isQueue && !isReady;
+  const enteredAt = new Date(entry.laneEnteredAt);
+  const overdue = showTimer && isLaneOverdue(enteredAt, entry.estimatedMinutes, now);
 
   return (
     <div
-      className={`rounded-xl bg-zinc-900/90 shadow-lg ${
+      className={cn(
+        "rounded-xl bg-zinc-900/90 shadow-lg border-2",
+        overdue ? "animate-display-overdue border-red-500" : "border-transparent",
         compact ? "px-2.5 py-2.5" : "px-3 py-3 sm:px-4 sm:py-4"
-      }`}
+      )}
     >
+      {showTimer && (
+        <p
+          className={cn(
+            "mb-1 text-center font-mono font-bold tabular-nums",
+            compact ? "text-[10px]" : "text-xs sm:text-sm",
+            overdue ? "text-red-400" : "text-zinc-400"
+          )}
+        >
+          {formatElapsedTimer(enteredAt, now)}
+          <span className="font-normal text-zinc-500"> / {entry.estimatedMinutes} min</span>
+        </p>
+      )}
       {isQueue && entry.queuePosition != null && (
         <p className="text-center text-[10px] font-semibold text-amber-400 sm:text-sm">
           #{entry.queuePosition} na fila
@@ -125,10 +149,12 @@ function ColumnSection({
   col,
   compact,
   className,
+  now,
 }: {
   col: DisplayColumn;
   compact?: boolean;
   className?: string;
+  now: Date;
 }) {
   return (
     <section
@@ -155,6 +181,7 @@ function ColumnSection({
               entry={entry}
               lane={col.lane}
               compact={compact}
+              now={now}
             />
           ))
         )}
@@ -165,7 +192,7 @@ function ColumnSection({
 
 export default function DisplayPage() {
   const [data, setData] = useState<DisplayData | null>(null);
-  const [clock, setClock] = useState("");
+  const [now, setNow] = useState(() => new Date());
 
   const load = useCallback(async () => {
     const res = await fetch("/api/display/orders");
@@ -175,19 +202,16 @@ export default function DisplayPage() {
   usePolling(load, 5000);
 
   useEffect(() => {
-    function tick() {
-      setClock(
-        new Intl.DateTimeFormat("pt-BR", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }).format(new Date())
-      );
-    }
-    tick();
-    const interval = setInterval(tick, 1000);
+    const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const clock = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: BUSINESS_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(now);
 
   if (!data) {
     return (
@@ -223,7 +247,9 @@ export default function DisplayPage() {
           </div>
           <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
             <p className="text-xl font-bold tabular-nums sm:text-3xl lg:text-4xl">{clock}</p>
-            <p className="text-[10px] text-zinc-500 sm:mt-0.5 sm:text-xs">Atualiza automaticamente</p>
+            <p className="text-[10px] text-zinc-500 sm:mt-0.5 sm:text-xs">
+              Horário de Brasília · atualiza automaticamente
+            </p>
           </div>
         </div>
       </header>
@@ -242,7 +268,6 @@ export default function DisplayPage() {
         ))}
       </div>
 
-      {/* Mobile / tablet: colunas com largura fixa + scroll horizontal */}
       <div className="xl:hidden">
         <p className="px-4 pb-2 text-center text-[10px] text-zinc-500 sm:text-xs">
           Deslize para ver todas as etapas →
@@ -254,6 +279,7 @@ export default function DisplayPage() {
                 key={col.lane}
                 col={col}
                 compact
+                now={now}
                 className="w-[42vw] min-w-[152px] max-w-[176px] shrink-0 snap-start"
               />
             ))}
@@ -261,7 +287,6 @@ export default function DisplayPage() {
         </div>
       </div>
 
-      {/* TV / desktop largo: grid com todas as colunas */}
       <div
         className="hidden gap-4 px-8 pb-8 xl:grid"
         style={{
@@ -269,7 +294,7 @@ export default function DisplayPage() {
         }}
       >
         {data.columns.map((col) => (
-          <ColumnSection key={col.lane} col={col} />
+          <ColumnSection key={col.lane} col={col} now={now} />
         ))}
       </div>
     </div>

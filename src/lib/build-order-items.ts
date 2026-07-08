@@ -2,11 +2,14 @@ import {
   PRIMARY_WORKFLOW_TASKS,
   type WorkflowTaskKey,
 } from "@/lib/order-workflow";
+import type { DisplayLaneDurations } from "@/lib/shop-settings";
+import { workflowTaskMinutes } from "@/lib/shop-settings";
 
 type ServiceLike = {
   id: string;
   name: string;
   defaultPrice: number;
+  estimatedMinutes: number;
   vehiclePrices: { vehicleType: string; price: number }[];
 };
 
@@ -15,6 +18,7 @@ export type OrderItemInput = {
   serviceName: string;
   price: number;
   employeeId: string | null;
+  estimatedMinutes: number;
 };
 
 function priceFor(service: ServiceLike, vehicleType: string) {
@@ -27,8 +31,15 @@ export function buildOrderItems(params: {
   vehicleType: string;
   workflow: Record<WorkflowTaskKey, { employeeId: string | null }>;
   extras: Record<string, { selected: boolean; employeeId: string | null }>;
+  laneDurations?: DisplayLaneDurations;
 }): OrderItemInput[] {
-  const { services, vehicleType, workflow, extras } = params;
+  const { services, vehicleType, workflow, extras, laneDurations } = params;
+  const durations = laneDurations ?? {
+    lavagem: 20,
+    aspiracao: 20,
+    secagem: 20,
+    finalizacao: 20,
+  };
   const items: OrderItemInput[] = [];
   const serviceById = new Map(services.map((s) => [s.id, s]));
 
@@ -44,6 +55,7 @@ export function buildOrderItems(params: {
       serviceName: label,
       price: 0,
       employeeId,
+      estimatedMinutes: workflowTaskMinutes(label, durations),
     });
   }
 
@@ -56,6 +68,7 @@ export function buildOrderItems(params: {
       serviceName: svc.name,
       price: priceFor(svc, vehicleType),
       employeeId: state.employeeId,
+      estimatedMinutes: svc.estimatedMinutes,
     });
   }
 

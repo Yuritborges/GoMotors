@@ -5,6 +5,8 @@ import type {
   DisplayOrderInput,
   FixedDisplayLaneKey,
 } from "./display-lanes-types";
+import { getLaneEstimatedMinutes } from "./order-lane-duration";
+import type { DisplayLaneDurations } from "./shop-settings";
 import {
   displayServiceLabel,
   dynamicLaneKey,
@@ -24,7 +26,9 @@ export { FIXED_DISPLAY_LANES } from "./display-lanes-constants";
 
 function entryForLane(
   order: DisplayOrderInput,
-  lane: string
+  lane: string,
+  durations: DisplayLaneDurations,
+  extras?: Partial<DisplayLaneEntry>
 ): DisplayLaneEntry {
   const base = {
     orderId: order.id,
@@ -41,11 +45,17 @@ function entryForLane(
     ...base,
     serviceName: primary?.serviceName ?? "—",
     employeeName: primary?.employee?.name ?? null,
+    laneEnteredAt: order.laneEnteredAt.toISOString(),
+    estimatedMinutes: getLaneEstimatedMinutes(lane, order.items, durations),
+    ...extras,
   };
 }
 
 /** Monta colunas operacionais — uma OS aparece em uma única etapa por vez. */
-export function buildOperationalColumns(orders: DisplayOrderInput[]): DisplayColumn[] {
+export function buildOperationalColumns(
+  orders: DisplayOrderInput[],
+  durations: DisplayLaneDurations
+): DisplayColumn[] {
   const fixed: Record<FixedDisplayLaneKey, DisplayLaneEntry[]> = {
     AGUARDANDO: [],
     LAVAGEM: [],
@@ -63,40 +73,23 @@ export function buildOperationalColumns(orders: DisplayOrderInput[]): DisplayCol
 
     if (lane === "AGUARDANDO") {
       queuePosition += 1;
-      fixed.AGUARDANDO.push({
-        orderId: order.id,
-        plate: order.vehicle.plate,
-        clientName: order.client.name.split(" ")[0],
-        serviceName: "—",
-        employeeName: null,
-        queuePosition,
-      });
+      fixed.AGUARDANDO.push(
+        entryForLane(order, "AGUARDANDO", durations, { queuePosition })
+      );
       continue;
     }
 
     if (lane === "PRONTO") {
-      fixed.PRONTO.push({
-        orderId: order.id,
-        plate: order.vehicle.plate,
-        clientName: order.client.name.split(" ")[0],
-        serviceName: "—",
-        employeeName: null,
-      });
+      fixed.PRONTO.push(entryForLane(order, "PRONTO", durations));
       continue;
     }
 
     if (lane === "FINALIZACAO") {
-      fixed.FINALIZACAO.push({
-        orderId: order.id,
-        plate: order.vehicle.plate,
-        clientName: order.client.name.split(" ")[0],
-        serviceName: "—",
-        employeeName: null,
-      });
+      fixed.FINALIZACAO.push(entryForLane(order, "FINALIZACAO", durations));
       continue;
     }
 
-    const entry = entryForLane(order, lane);
+    const entry = entryForLane(order, lane, durations);
 
     if (lane === "LAVAGEM") fixed.LAVAGEM.push(entry);
     else if (lane === "ASPIRACAO") fixed.ASPIRACAO.push(entry);
@@ -150,8 +143,11 @@ function getDynamicLabelFromLane(lane: string): string {
 }
 
 /** Telão e painel: fixas + extras dinâmicos + Finalização fixa. */
-export function buildDisplayColumns(orders: DisplayOrderInput[]): DisplayColumn[] {
-  return buildOperationalColumns(orders);
+export function buildDisplayColumns(
+  orders: DisplayOrderInput[],
+  durations: DisplayLaneDurations
+): DisplayColumn[] {
+  return buildOperationalColumns(orders, durations);
 }
 
 export function displayLaneStats(columns: DisplayColumn[]) {

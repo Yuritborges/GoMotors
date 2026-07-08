@@ -21,6 +21,20 @@ type Service = {
   vehiclePrices: { vehicleType: string; price: number }[];
 };
 
+type LaneDurations = {
+  lavagem: number;
+  aspiracao: number;
+  secagem: number;
+  finalizacao: number;
+};
+
+const DEFAULT_LANE_DURATIONS: LaneDurations = {
+  lavagem: 20,
+  aspiracao: 20,
+  secagem: 20,
+  finalizacao: 20,
+};
+
 const VEHICLE_TYPES = ["MOTO", "CARRO", "SUV", "CAMINHONETE", "OUTRO"];
 
 const emptyService = {
@@ -37,19 +51,28 @@ export default function ServicosPage() {
   const [editing, setEditing] = useState<Service | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(emptyService);
+  const [laneDurations, setLaneDurations] = useState<LaneDurations>(DEFAULT_LANE_DURATIONS);
+  const [laneForm, setLaneForm] = useState(DEFAULT_LANE_DURATIONS);
+  const [laneSaving, setLaneSaving] = useState(false);
 
   const owner = user ? isOwner(user.role) : false;
 
   async function load() {
-    const [meRes, servicesRes] = await Promise.all([
+    const [meRes, servicesRes, lanesRes] = await Promise.all([
       fetch("/api/auth/me"),
       fetch("/api/services"),
+      fetch("/api/settings/display-lanes"),
     ]);
     if (meRes.ok) {
       const meData = await meRes.json();
       setUser(meData.user);
     }
     setServices(await servicesRes.json());
+    if (lanesRes.ok) {
+      const lanes: LaneDurations = await lanesRes.json();
+      setLaneDurations(lanes);
+      setLaneForm(lanes);
+    }
   }
 
   useEffect(() => {
@@ -110,6 +133,22 @@ export default function ServicosPage() {
     load();
   }
 
+  async function saveLaneDurations(e: React.FormEvent) {
+    e.preventDefault();
+    setLaneSaving(true);
+    const res = await fetch("/api/settings/display-lanes", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(laneForm),
+    });
+    setLaneSaving(false);
+    if (res.ok) {
+      const data: LaneDurations = await res.json();
+      setLaneDurations(data);
+      setLaneForm(data);
+    }
+  }
+
   async function toggleActive(id: string, active: boolean) {
     const service = services.find((s) => s.id === id);
     if (!service) return;
@@ -134,7 +173,7 @@ export default function ServicosPage() {
         title="Serviços"
         description={
           owner
-            ? "Gerencie preços e catálogo de serviços"
+            ? "Preços, tempos no telão e catálogo de serviços"
             : "Consulta de serviços e preços"
         }
       >
@@ -144,6 +183,77 @@ export default function ServicosPage() {
           </Button>
         )}
       </PageHeader>
+
+      {owner && (
+        <Card className="border-sky-200 bg-gradient-to-r from-sky-50/80 to-white">
+          <CardHeader>
+            <CardTitle className="text-base">Tempos no telão — etapas fixas</CardTitle>
+            <p className="text-sm text-slate-600">
+              Lavagem, Aspiração, Secagem e Finalização. Quando o tempo estourar, a placa
+              pisca em vermelho no painel da TV.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={saveLaneDurations} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field>
+                <Label>Lavagem (min)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="480"
+                  value={laneForm.lavagem}
+                  onChange={(e) => setLaneForm({ ...laneForm, lavagem: Number(e.target.value) })}
+                  required
+                />
+              </Field>
+              <Field>
+                <Label>Aspiração (min)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="480"
+                  value={laneForm.aspiracao}
+                  onChange={(e) => setLaneForm({ ...laneForm, aspiracao: Number(e.target.value) })}
+                  required
+                />
+              </Field>
+              <Field>
+                <Label>Secagem (min)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="480"
+                  value={laneForm.secagem}
+                  onChange={(e) => setLaneForm({ ...laneForm, secagem: Number(e.target.value) })}
+                  required
+                />
+              </Field>
+              <Field>
+                <Label>Finalização (min)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="480"
+                  value={laneForm.finalizacao}
+                  onChange={(e) =>
+                    setLaneForm({ ...laneForm, finalizacao: Number(e.target.value) })
+                  }
+                  required
+                />
+              </Field>
+              <div className="sm:col-span-2 lg:col-span-4">
+                <Button type="submit" disabled={laneSaving}>
+                  {laneSaving ? "Salvando..." : "Salvar tempos do telão"}
+                </Button>
+                <p className="mt-2 text-xs text-slate-500">
+                  Atual: Lavagem {laneDurations.lavagem} · Aspiração {laneDurations.aspiracao} ·
+                  Secagem {laneDurations.secagem} · Finalização {laneDurations.finalizacao} min
+                </p>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {(creating || editing) && owner && (
         <Card>
@@ -183,16 +293,20 @@ export default function ServicosPage() {
                   />
                 </Field>
                 <Field>
-                  <Label>Tempo estimado (min)</Label>
+                  <Label>Tempo no telão (min)</Label>
                   <Input
                     type="number"
                     min="1"
+                    max="480"
                     value={form.estimatedMinutes}
                     onChange={(e) =>
                       setForm({ ...form, estimatedMinutes: e.target.value })
                     }
                     required
                   />
+                  <p className="text-xs text-slate-500">
+                    Serviços extras (Polimento, etc.) usam este tempo no cronômetro da TV.
+                  </p>
                 </Field>
               </div>
 
@@ -265,7 +379,7 @@ export default function ServicosPage() {
                       </Badge>
                     </div>
                     <p className="mt-1 text-sm text-slate-500">
-                      Preço padrão: {formatCurrency(service.defaultPrice)} ·{" "}
+                      Preço padrão: {formatCurrency(service.defaultPrice)} · Telão:{" "}
                       {service.estimatedMinutes} min
                     </p>
                   </div>

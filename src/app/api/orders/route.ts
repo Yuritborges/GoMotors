@@ -10,6 +10,7 @@ import { endOfDay, startOfDay } from "@/lib/utils";
 import type { WorkflowTaskKey } from "@/lib/order-workflow";
 import { hasAnyAssignedService, BLOCKING_ORDER_STATUSES } from "@/lib/order-workflow";
 import { paymentStatusForMethod } from "@/lib/payments";
+import { getDisplayLaneDurations } from "@/lib/shop-settings";
 import {
   OrderEntryDateError,
   parseOrderEntryAt,
@@ -133,12 +134,14 @@ export async function POST(request: Request) {
       where: { active: true },
       include: { vehiclePrices: true },
     });
+    const laneDurations = await getDisplayLaneDurations(prisma);
 
     items = buildOrderItems({
       services,
       vehicleType: vehicle.vehicleType,
       workflow,
       extras,
+      laneDurations,
     });
 
     if (items.length === 0) {
@@ -172,6 +175,7 @@ export async function POST(request: Request) {
         serviceName: service.name,
         price,
         employeeId: body.employeeId || null,
+        estimatedMinutes: service.estimatedMinutes,
       };
     });
   }
@@ -200,6 +204,7 @@ export async function POST(request: Request) {
       paymentStatus,
       notes,
       entryAt,
+      laneEnteredAt: entryAt,
       deliveredAt: retroactive ? entryAt : undefined,
       items: {
         create: items.map((item) => ({
@@ -207,6 +212,7 @@ export async function POST(request: Request) {
           serviceName: item.serviceName,
           price: item.price,
           employeeId: item.employeeId,
+          estimatedMinutes: item.estimatedMinutes,
         })),
       },
       payments:
