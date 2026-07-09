@@ -27,6 +27,11 @@ import {
   defaultRetroactiveEntryValue,
   toDatetimeLocalValue,
 } from "@/lib/order-entry-date";
+import {
+  businessDateKey,
+  formatBusinessDateKey,
+  isBusinessDateKey,
+} from "@/lib/business-day";
 import Link from "next/link";
 
 const INITIAL_WORKFLOW: Record<WorkflowTaskKey, WorkflowTaskState> = {
@@ -80,6 +85,10 @@ type PartnerStore = { id: string; name: string; active: boolean };
 export default function NovaOrdemPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const operatingDateParam = searchParams.get("operatingDate");
+  const operatingDate =
+    operatingDateParam && isBusinessDateKey(operatingDateParam) ? operatingDateParam : null;
+  const isOperatingPastDay = operatingDate !== null && operatingDate !== businessDateKey();
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -468,6 +477,7 @@ export default function NovaOrdemPage() {
           paymentMethod,
           notes,
           partnerStoreId: orderType === "PARCEIRO" ? partnerStoreId : null,
+          ...(operatingDate ? { operatingDate } : {}),
           ...(retroactive ? { entryAt: new Date(entryAtLocal).toISOString() } : {}),
         }),
       });
@@ -508,6 +518,14 @@ export default function NovaOrdemPage() {
         title="Nova ordem"
         description="Placa → serviços → registrar"
       />
+
+      {isOperatingPastDay && operatingDate && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Esta ordem será registrada no dia{" "}
+          <strong>{formatBusinessDateKey(operatingDate)}</strong> (caixa reaberto). Ela entra na
+          fila operacional desse dia, não no dia de hoje.
+        </p>
+      )}
 
       <Card className="border-sky-200 bg-gradient-to-br from-sky-50 to-white shadow-sm">
         <CardHeader className="pb-2 pt-4 sm:pt-6">

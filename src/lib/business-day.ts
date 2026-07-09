@@ -11,7 +11,7 @@ export function businessDateKey(instant: Date = new Date()): string {
   }).format(instant);
 }
 
-function partsInBusinessTz(instant: Date) {
+export function partsInBusinessTz(instant: Date) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: BUSINESS_TIMEZONE,
     year: "numeric",
@@ -74,4 +74,31 @@ export function parseBusinessDateInput(dateInput?: string | null): Date {
 /** O dia civil (SP) em que um instante UTC cai. */
 export function businessDateKeyFromInstant(instant: Date): string {
   return businessDateKey(instant);
+}
+
+const BUSINESS_DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isBusinessDateKey(value: string): boolean {
+  return BUSINESS_DATE_KEY_RE.test(value);
+}
+
+/** Rótulo dd/mm/aaaa para uma chave YYYY-MM-DD (calendário SP). */
+export function formatBusinessDateKey(dateKey: string): string {
+  if (!isBusinessDateKey(dateKey)) return dateKey;
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: BUSINESS_TIMEZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(parseBusinessDateInput(dateKey));
+}
+
+/** Horário atual de SP ancorado em um dia operacional (ex.: caixa reaberto). */
+export function entryAtForOperatingDate(dateKey: string): Date {
+  if (!isBusinessDateKey(dateKey)) {
+    throw new Error("Data operacional inválida.");
+  }
+  const parts = partsInBusinessTz(new Date());
+  const time = `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}:${String(parts.second).padStart(2, "0")}.000`;
+  return businessZonedTimeToUtc(dateKey, time);
 }

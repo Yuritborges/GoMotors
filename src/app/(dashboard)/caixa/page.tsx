@@ -19,7 +19,8 @@ import {
   Wallet,
   Wrench,
 } from "lucide-react";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { businessDateKey, formatBusinessDateKey, isBusinessDateKey } from "@/lib/business-day";
 import {
   ORDER_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -105,11 +106,6 @@ const METHOD_COLORS: Record<string, string> = {
   CREDITO: "from-indigo-500 to-indigo-600",
 };
 
-function todayInputValue() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function shiftDate(isoDate: string, days: number) {
   const [y, m, d] = isoDate.split("-").map(Number);
   const next = new Date(y, m - 1, d + days);
@@ -125,7 +121,7 @@ type ClosingRow = {
 
 export default function CaixaPage() {
   const searchParams = useSearchParams();
-  const [date, setDate] = useState(todayInputValue);
+  const [date, setDate] = useState(() => businessDateKey());
   const [data, setData] = useState<CashData | null>(null);
   const [closings, setClosings] = useState<ClosingRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -140,8 +136,11 @@ export default function CaixaPage() {
     }
   }, [searchParams]);
 
-  const isViewingToday = date === todayInputValue();
-  const dayLabel = isViewingToday ? "hoje" : formatDate(`${date}T12:00:00`);
+  const todayKey = businessDateKey();
+  const isViewingToday = date === todayKey;
+  const dayLabel = isViewingToday ? "hoje" : formatBusinessDateKey(date);
+  const novaOrdemHref =
+    date === todayKey ? "/ordens/nova" : `/ordens/nova?operatingDate=${encodeURIComponent(date)}`;
 
   const load = useCallback(async () => {
     const [cashRes, closingsRes] = await Promise.all([
@@ -195,9 +194,9 @@ export default function CaixaPage() {
 
   async function reopenCashDay(targetDate = date) {
     const label =
-      targetDate === todayInputValue()
+      targetDate === todayKey
         ? "hoje"
-        : formatDate(`${targetDate}T12:00:00`);
+        : formatBusinessDateKey(targetDate);
     if (
       !confirm(
         `Reabrir o caixa de ${label}?\n\nVocê poderá alterar lançamentos e fechar novamente quando terminar.`
@@ -257,7 +256,10 @@ export default function CaixaPage() {
             <Input
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (isBusinessDateKey(value)) setDate(value);
+              }}
               className="min-w-[160px] bg-white"
             />
             <Button
@@ -271,7 +273,7 @@ export default function CaixaPage() {
               <ChevronRight className="h-4 w-4" />
             </Button>
             {!isViewingToday && (
-              <Button type="button" variant="secondary" onClick={() => setDate(todayInputValue())}>
+              <Button type="button" variant="secondary" onClick={() => setDate(todayKey)}>
                 Hoje
               </Button>
             )}
@@ -288,6 +290,9 @@ export default function CaixaPage() {
         }
       >
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Link href={novaOrdemHref} className="w-full sm:w-auto">
+            <Button className="w-full sm:w-auto">Nova ordem</Button>
+          </Link>
           <Link href="/painel">
             <Button variant="secondary" className="w-full gap-2 sm:w-auto">
               <Wrench className="h-4 w-4" />
@@ -620,7 +625,7 @@ export default function CaixaPage() {
             <p className="text-sm text-slate-500">Nenhum fechamento registrado ainda.</p>
           ) : (
             closings.map((closing) => {
-              const label = formatDate(`${closing.date}T12:00:00`);
+              const label = formatBusinessDateKey(closing.date);
               return (
                 <div
                   key={closing.id}
