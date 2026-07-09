@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp, Clock, List } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { VEHICLE_TYPE_LABELS } from "@/lib/constants";
 import { isOwner } from "@/lib/permissions";
@@ -28,6 +29,14 @@ type LaneDurations = {
   finalizacao: number;
 };
 
+type ServiceTimeRow = {
+  id: string;
+  name: string;
+  category: string;
+  estimatedMinutes: number;
+  active: boolean;
+};
+
 const DEFAULT_LANE_DURATIONS: LaneDurations = {
   lavagem: 20,
   aspiracao: 20,
@@ -35,7 +44,16 @@ const DEFAULT_LANE_DURATIONS: LaneDurations = {
   finalizacao: 20,
 };
 
+const FIXED_STAGE_ROWS: { key: keyof LaneDurations; label: string }[] = [
+  { key: "lavagem", label: "Lavagem" },
+  { key: "aspiracao", label: "Aspiração" },
+  { key: "secagem", label: "Secagem" },
+  { key: "finalizacao", label: "Finalização" },
+];
+
 const VEHICLE_TYPES = ["MOTO", "CARRO", "SUV", "CAMINHONETE", "OUTRO"];
+
+const PREVIEW_COUNT = 4;
 
 const emptyService = {
   name: "",
@@ -51,27 +69,34 @@ export default function ServicosPage() {
   const [editing, setEditing] = useState<Service | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(emptyService);
-  const [laneDurations, setLaneDurations] = useState<LaneDurations>(DEFAULT_LANE_DURATIONS);
   const [laneForm, setLaneForm] = useState(DEFAULT_LANE_DURATIONS);
-  const [laneSaving, setLaneSaving] = useState(false);
+  const [serviceTimes, setServiceTimes] = useState<ServiceTimeRow[]>([]);
+  const [serviceTimeForm, setServiceTimeForm] = useState<Record<string, number>>({});
+  const [timesSaving, setTimesSaving] = useState(false);
+  const [timesSaved, setTimesSaved] = useState(false);
+  const [timesExpanded, setTimesExpanded] = useState(false);
+  const [catalogExpanded, setCatalogExpanded] = useState(false);
 
   const owner = user ? isOwner(user.role) : false;
 
   async function load() {
-    const [meRes, servicesRes, lanesRes] = await Promise.all([
+    const [meRes, servicesRes, timesRes] = await Promise.all([
       fetch("/api/auth/me"),
       fetch("/api/services"),
-      fetch("/api/settings/display-lanes"),
+      fetch("/api/settings/display-times"),
     ]);
     if (meRes.ok) {
       const meData = await meRes.json();
       setUser(meData.user);
     }
     setServices(await servicesRes.json());
-    if (lanesRes.ok) {
-      const lanes: LaneDurations = await lanesRes.json();
-      setLaneDurations(lanes);
-      setLaneForm(lanes);
+    if (timesRes.ok) {
+      const data: { lanes: LaneDurations; services: ServiceTimeRow[] } = await timesRes.json();
+      setLaneForm(data.lanes);
+      setServiceTimes(data.services);
+      setServiceTimeForm(
+        Object.fromEntries(data.services.map((s) => [s.id, s.estimatedMinutes]))
+      );
     }
   }
 
@@ -82,6 +107,7 @@ export default function ServicosPage() {
   function openEdit(service: Service) {
     setEditing(service);
     setCreating(false);
+    setCatalogExpanded(true);
     setForm({
       name: service.name,
       category: service.category,
@@ -98,6 +124,7 @@ export default function ServicosPage() {
     setCreating(true);
     setEditing(null);
     setForm(emptyService);
+    setCatalogExpanded(true);
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -133,20 +160,42 @@ export default function ServicosPage() {
     load();
   }
 
-  async function saveLaneDurations(e: React.FormEvent) {
+  async function saveAllDisplayTimes(e: React.FormEvent) {
     e.preventDefault();
-    setLaneSaving(true);
-    const res = await fetch("/api/settings/display-lanes", {
+    setTimesSaving(true);
+    setTimesSaved(false);
+    const res = await fetch("/api/settings/display-times", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(laneForm),
+      body: JSON.stringify({
+        lanes: laneForm,
+        services: serviceTimes.map((s) => ({
+          id: s.id,
+          estimatedMinutes: serviceTimeForm[s.id] ?? s.estimatedMinutes,
+        })),
+      }),
     });
-    setLaneSaving(false);
+    setTimesSaving(false);
     if (res.ok) {
-      const data: LaneDurations = await res.json();
-      setLaneDurations(data);
-      setLaneForm(data);
+      const data: { lanes: LaneDurations; services: ServiceTimeRow[] } = await res.json();
+      setLaneForm(data.lanes);
+      setServiceTimes(data.services);
+      setServiceTimeForm(
+        Object.fromEntries(data.services.map((s) => [s.id, s.estimatedMinutes]))
+      );
+      setTimesSaved(true);
+      await load();
     }
+  }
+
+  function setServiceMinutes(id: string, value: number) {
+    setServiceTimeForm((prev) => ({ ...prev, [id]: value }));
+    setTimesSaved(false);
+  }
+
+  function setLaneMinutes(key: keyof LaneDurations, value: number) {
+    setLaneForm((prev) => ({ ...prev, [key]: value }));
+    setTimesSaved(false);
   }
 
   async function toggleActive(id: string, active: boolean) {
@@ -160,6 +209,20 @@ export default function ServicosPage() {
     });
     load();
   }
+
+  const groupedServiceTimes = serviceTimes.reduce<Record<string, ServiceTimeRow[]>>(
+    (acc, service) => {
+      acc[service.category] = acc[service.category] ?? [];
+      acc[service.category].push(service);
+      return acc;
+    },
+    {}
+  );
+
+  const previewServices = services.slice(0, PREVIEW_COUNT);
+  const hiddenServicesCount = Math.max(0, services.length - PREVIEW_COUNT);
+  const previewServiceTimes = serviceTimes.slice(0, PREVIEW_COUNT);
+  const hiddenServiceTimesCount = Math.max(0, serviceTimes.length - PREVIEW_COUNT);
 
   const grouped = services.reduce<Record<string, Service[]>>((acc, service) => {
     acc[service.category] = acc[service.category] ?? [];
@@ -186,69 +249,153 @@ export default function ServicosPage() {
 
       {owner && (
         <Card className="border-sky-200 bg-gradient-to-r from-sky-50/80 to-white">
-          <CardHeader>
-            <CardTitle className="text-base">Tempos no telão — etapas fixas</CardTitle>
-            <p className="text-sm text-slate-600">
-              Lavagem, Aspiração, Secagem e Finalização. Quando o tempo estourar, a placa
-              pisca em vermelho no painel da TV.
-            </p>
+          <CardHeader className="pb-3">
+            <div className="flex items-start gap-2">
+              <Clock className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
+              <div>
+                <CardTitle className="text-base">Tempos no telão</CardTitle>
+                <p className="text-sm text-slate-600">
+                  Limite por etapa e por serviço. Ao estourar, a placa pisca em vermelho na TV.
+                </p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <form onSubmit={saveLaneDurations} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Field>
-                <Label>Lavagem (min)</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="480"
-                  value={laneForm.lavagem}
-                  onChange={(e) => setLaneForm({ ...laneForm, lavagem: Number(e.target.value) })}
-                  required
-                />
-              </Field>
-              <Field>
-                <Label>Aspiração (min)</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="480"
-                  value={laneForm.aspiracao}
-                  onChange={(e) => setLaneForm({ ...laneForm, aspiracao: Number(e.target.value) })}
-                  required
-                />
-              </Field>
-              <Field>
-                <Label>Secagem (min)</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="480"
-                  value={laneForm.secagem}
-                  onChange={(e) => setLaneForm({ ...laneForm, secagem: Number(e.target.value) })}
-                  required
-                />
-              </Field>
-              <Field>
-                <Label>Finalização (min)</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="480"
-                  value={laneForm.finalizacao}
-                  onChange={(e) =>
-                    setLaneForm({ ...laneForm, finalizacao: Number(e.target.value) })
-                  }
-                  required
-                />
-              </Field>
-              <div className="sm:col-span-2 lg:col-span-4">
-                <Button type="submit" disabled={laneSaving}>
-                  {laneSaving ? "Salvando..." : "Salvar tempos do telão"}
+            <form onSubmit={saveAllDisplayTimes} className="space-y-6">
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-slate-800">
+                  Etapas operacionais (fila do lava-rápido)
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {FIXED_STAGE_ROWS.map(({ key, label }) => (
+                    <Field key={key}>
+                      <Label>{label} (min)</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="480"
+                        value={laneForm[key]}
+                        onChange={(e) => setLaneMinutes(key, Number(e.target.value))}
+                        required
+                      />
+                    </Field>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-slate-800">
+                  Serviços do catálogo ({serviceTimes.length})
+                </h3>
+                {serviceTimes.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    Nenhum serviço cadastrado. Crie serviços abaixo para configurar o tempo.
+                  </p>
+                ) : timesExpanded ? (
+                  <div className="space-y-4">
+                    {Object.entries(groupedServiceTimes).map(([category, items]) => (
+                      <div key={category} className="rounded-xl border border-slate-200 bg-white/80">
+                        <p className="border-b border-slate-100 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {category}
+                        </p>
+                        <div className="divide-y divide-slate-100">
+                          {items.map((service) => (
+                            <div
+                              key={service.id}
+                              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-slate-900">{service.name}</p>
+                                {!service.active && (
+                                  <p className="text-xs text-slate-400">Inativo</p>
+                                )}
+                              </div>
+                              <Field className="w-28 shrink-0">
+                                <Label className="sr-only">Tempo {service.name}</Label>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    max="480"
+                                    className="text-center"
+                                    value={serviceTimeForm[service.id] ?? service.estimatedMinutes}
+                                    onChange={(e) =>
+                                      setServiceMinutes(service.id, Number(e.target.value))
+                                    }
+                                    required
+                                  />
+                                  <span className="text-xs text-slate-500">min</span>
+                                </div>
+                              </Field>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white/80">
+                    {previewServiceTimes.map((service) => (
+                      <div
+                        key={service.id}
+                        className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-slate-900">{service.name}</p>
+                          <p className="text-xs text-slate-500">{service.category}</p>
+                        </div>
+                        <Field className="w-28 shrink-0">
+                          <Label className="sr-only">Tempo {service.name}</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min="1"
+                              max="480"
+                              className="text-center"
+                              value={serviceTimeForm[service.id] ?? service.estimatedMinutes}
+                              onChange={(e) =>
+                                setServiceMinutes(service.id, Number(e.target.value))
+                              }
+                              required
+                            />
+                            <span className="text-xs text-slate-500">min</span>
+                          </div>
+                        </Field>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {hiddenServiceTimesCount > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-3 w-full text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                    onClick={() => setTimesExpanded((open) => !open)}
+                  >
+                    {timesExpanded ? (
+                      <>
+                        <ChevronUp className="h-4 w-4" />
+                        Mostrar menos
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-4 w-4" />
+                        Ver mais {hiddenServiceTimesCount} serviço
+                        {hiddenServiceTimesCount === 1 ? "" : "s"}
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="submit" disabled={timesSaving}>
+                  {timesSaving ? "Salvando..." : "Salvar todos os tempos do telão"}
                 </Button>
-                <p className="mt-2 text-xs text-slate-500">
-                  Atual: Lavagem {laneDurations.lavagem} · Aspiração {laneDurations.aspiracao} ·
-                  Secagem {laneDurations.secagem} · Finalização {laneDurations.finalizacao} min
-                </p>
+                {timesSaved && (
+                  <span className="text-sm text-emerald-700">Tempos salvos com sucesso.</span>
+                )}
               </div>
             </form>
           </CardContent>
@@ -353,73 +500,159 @@ export default function ServicosPage() {
         </Card>
       )}
 
-      {Object.entries(grouped).map(([category, items]) => (
-        <Card key={category}>
-          <CardHeader>
-            <CardTitle>{category}</CardTitle>
+      {owner ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-start gap-2">
+              <List className="mt-0.5 h-5 w-5 shrink-0 text-slate-600" />
+              <div>
+                <CardTitle>Catálogo ({services.length})</CardTitle>
+                <p className="text-sm text-slate-600">Preços e serviços oferecidos na oficina.</p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {items.map((service) => (
-              <div
-                key={service.id}
-                className="rounded-xl border border-slate-200 p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold">{service.name}</h3>
-                      <Badge
-                        className={
-                          service.active
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : "border-slate-200 bg-slate-100 text-slate-500"
-                        }
-                      >
-                        {service.active ? "Ativo" : "Inativo"}
-                      </Badge>
-                    </div>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Preço padrão: {formatCurrency(service.defaultPrice)} · Telão:{" "}
-                      {service.estimatedMinutes} min
-                    </p>
-                  </div>
-                  {owner && (
-                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openEdit(service)}
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => toggleActive(service.id, service.active)}
-                      >
-                        {service.active ? "Desativar" : "Ativar"}
-                      </Button>
-                    </div>
+            {(catalogExpanded ? Object.entries(grouped) : [["", previewServices] as const]).map(
+              ([category, items]) => (
+                <div key={category || "preview"} className="space-y-3">
+                  {catalogExpanded && category && (
+                    <p className="text-sm font-semibold text-slate-800">{category}</p>
                   )}
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-                  {service.vehiclePrices.map((vp) => (
+                  {items.map((service) => (
                     <div
-                      key={vp.vehicleType}
-                      className="rounded-lg bg-slate-50 px-3 py-2 text-center text-sm"
+                      key={service.id}
+                      className="rounded-xl border border-slate-200 p-4"
                     >
-                      <p className="text-xs text-slate-500">
-                        {VEHICLE_TYPE_LABELS[vp.vehicleType]}
-                      </p>
-                      <p className="font-medium">{formatCurrency(vp.price)}</p>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold">{service.name}</h3>
+                            <Badge
+                              className={
+                                service.active
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : "border-slate-200 bg-slate-100 text-slate-500"
+                              }
+                            >
+                              {service.active ? "Ativo" : "Inativo"}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {service.category} · {formatCurrency(service.defaultPrice)} · Telão:{" "}
+                            {service.estimatedMinutes} min
+                          </p>
+                        </div>
+                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openEdit(service)}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => toggleActive(service.id, service.active)}
+                          >
+                            {service.active ? "Desativar" : "Ativar"}
+                          </Button>
+                        </div>
+                      </div>
+                      {catalogExpanded && (
+                        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                          {service.vehiclePrices.map((vp) => (
+                            <div
+                              key={vp.vehicleType}
+                              className="rounded-lg bg-slate-50 px-3 py-2 text-center text-sm"
+                            >
+                              <p className="text-xs text-slate-500">
+                                {VEHICLE_TYPE_LABELS[vp.vehicleType]}
+                              </p>
+                              <p className="font-medium">{formatCurrency(vp.price)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
-              </div>
-            ))}
+              )
+            )}
+
+            {hiddenServicesCount > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full text-slate-700 hover:bg-slate-50"
+                onClick={() => setCatalogExpanded((open) => !open)}
+              >
+                {catalogExpanded ? (
+                  <>
+                    <ChevronUp className="h-4 w-4" />
+                    Mostrar menos
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4" />
+                    Ver todos os serviços ({services.length})
+                  </>
+                )}
+              </Button>
+            )}
           </CardContent>
         </Card>
-      ))}
+      ) : (
+        Object.entries(grouped).map(([category, items]) => (
+          <Card key={category}>
+            <CardHeader>
+              <CardTitle>{category}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {items.map((service) => (
+                <div
+                  key={service.id}
+                  className="rounded-xl border border-slate-200 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">{service.name}</h3>
+                        <Badge
+                          className={
+                            service.active
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-slate-200 bg-slate-100 text-slate-500"
+                          }
+                        >
+                          {service.active ? "Ativo" : "Inativo"}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Preço padrão: {formatCurrency(service.defaultPrice)} · Telão:{" "}
+                        {service.estimatedMinutes} min
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                    {service.vehiclePrices.map((vp) => (
+                      <div
+                        key={vp.vehicleType}
+                        className="rounded-lg bg-slate-50 px-3 py-2 text-center text-sm"
+                      >
+                        <p className="text-xs text-slate-500">
+                          {VEHICLE_TYPE_LABELS[vp.vehicleType]}
+                        </p>
+                        <p className="font-medium">{formatCurrency(vp.price)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ))
+      )}
     </div>
   );
 }

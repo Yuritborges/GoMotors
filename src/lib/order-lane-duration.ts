@@ -1,3 +1,4 @@
+import { BUSINESS_TIMEZONE } from "@/lib/business-day";
 import { getItemsForLane } from "@/lib/order-lanes";
 import type { DisplayLaneDurations } from "@/lib/shop-settings";
 
@@ -44,4 +45,18 @@ export function formatElapsedTimer(laneEnteredAt: Date, now = new Date()): strin
   const mm = Math.floor(totalSec / 60);
   const ss = totalSec % 60;
   return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+}
+
+const laneClockFormatter = new Intl.DateTimeFormat("pt-BR", {
+  timeZone: BUSINESS_TIMEZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+export function formatLaneClockTime(instant: Date): string {
+  return laneClockFormatter.format(instant);
+}
+
+export function getLaneEstimatedEndAt(laneEnteredAt: Date, estimatedMinutes: number): Date {
+  return new Date(laneEnteredAt.getTime() + estimatedMinutes * 60_000);
 }

@@ -5,7 +5,7 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { usePolling } from "@/lib/use-polling";
 import { BUSINESS_TIMEZONE } from "@/lib/business-day";
-import { formatElapsedTimer, isLaneOverdue } from "@/lib/order-lane-duration";
+import { formatElapsedTimer, formatLaneClockTime, getLaneEstimatedEndAt, isLaneOverdue } from "@/lib/order-lane-duration";
 
 type DisplayEntry = {
   orderId: string;
@@ -77,6 +77,7 @@ function LaneCard({
   const showTimer = entry.estimatedMinutes > 0 && !isQueue && !isReady;
   const enteredAt = new Date(entry.laneEnteredAt);
   const overdue = showTimer && isLaneOverdue(enteredAt, entry.estimatedMinutes, now);
+  const estimatedEndAt = getLaneEstimatedEndAt(enteredAt, entry.estimatedMinutes);
 
   return (
     <div
@@ -87,16 +88,27 @@ function LaneCard({
       )}
     >
       {showTimer && (
-        <p
-          className={cn(
-            "mb-1 text-center font-mono font-bold tabular-nums",
-            compact ? "text-[10px]" : "text-xs sm:text-sm",
-            overdue ? "text-red-400" : "text-zinc-400"
-          )}
-        >
-          {formatElapsedTimer(enteredAt, now)}
-          <span className="font-normal text-zinc-500"> / {entry.estimatedMinutes} min</span>
-        </p>
+        <div className="mb-1 text-center">
+          <p
+            className={cn(
+              "font-mono font-bold tabular-nums",
+              compact ? "text-[10px]" : "text-xs sm:text-sm",
+              overdue ? "text-red-400" : "text-zinc-400"
+            )}
+          >
+            {formatElapsedTimer(enteredAt, now)}
+            <span className="font-normal text-zinc-500"> / {entry.estimatedMinutes} min</span>
+          </p>
+          <p
+            className={cn(
+              "mt-0.5 tabular-nums",
+              compact ? "text-[9px]" : "text-[10px] sm:text-xs",
+              overdue ? "text-red-400" : "text-zinc-500"
+            )}
+          >
+            Início {formatLaneClockTime(enteredAt)} · Prev. {formatLaneClockTime(estimatedEndAt)}
+          </p>
+        </div>
       )}
       {isQueue && entry.queuePosition != null && (
         <p className="text-center text-[10px] font-semibold text-amber-400 sm:text-sm">

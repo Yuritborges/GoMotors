@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   formatElapsedTimer,
+  formatLaneClockTime,
+  getLaneEstimatedEndAt,
   getLaneEstimatedMinutes,
   isLaneOverdue,
 } from "./order-lane-duration";
@@ -34,4 +36,11 @@ test("formatElapsedTimer", () => {
   const entered = new Date("2026-07-07T15:00:00.000Z");
   const now = new Date("2026-07-07T15:05:07.000Z");
   assert.equal(formatElapsedTimer(entered, now), "05:07");
+});
+
+test("formatLaneClockTime e previsão de término em Brasília", () => {
+  const entered = new Date("2026-07-07T18:00:00.000Z"); // 15:00 BRT (winter? Actually July is -3, so 15:00)
+  assert.equal(formatLaneClockTime(entered), "15:00");
+  const end = getLaneEstimatedEndAt(entered, 20);
+  assert.equal(formatLaneClockTime(end), "15:20");
 });
