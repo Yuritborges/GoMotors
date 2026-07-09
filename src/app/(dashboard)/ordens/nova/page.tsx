@@ -75,6 +75,8 @@ type Service = {
 
 type Employee = { id: string; name: string };
 
+type PartnerStore = { id: string; name: string; active: boolean };
+
 export default function NovaOrdemPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -89,6 +91,13 @@ export default function NovaOrdemPage() {
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [discount, setDiscount] = useState("0");
   const [paymentMethod, setPaymentMethod] = useState("PAGAR_DEPOIS");
+  const [orderType, setOrderType] = useState<"AVULSO" | "PARCEIRO">("AVULSO");
+  const [partnerStores, setPartnerStores] = useState<PartnerStore[]>([]);
+  const [partnerStoreId, setPartnerStoreId] = useState("");
+  const [showNewStore, setShowNewStore] = useState(false);
+  const [newStoreName, setNewStoreName] = useState("");
+  const [savingStore, setSavingStore] = useState(false);
+  const [storeError, setStoreError] = useState("");
   const [retroactive, setRetroactive] = useState(false);
   const [entryAtLocal, setEntryAtLocal] = useState(defaultRetroactiveEntryValue);
   const [notes, setNotes] = useState("");
@@ -200,6 +209,21 @@ export default function NovaOrdemPage() {
     });
   }
 
+  const loadPartners = useCallback(async () => {
+    try {
+      const res = await fetch("/api/partners");
+      if (!res.ok) return;
+      const data = (await res.json()) as PartnerStore[];
+      setPartnerStores(data.filter((s) => s.active));
+    } catch {
+      /* silencioso — parceiro é opcional */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPartners();
+  }, [loadPartners]);
+
   useEffect(() => {
     Promise.all([
       fetch("/api/clients").then((r) => r.json()),
@@ -275,11 +299,17 @@ export default function NovaOrdemPage() {
 
   const assignmentCount = countAssignments(workflow, extras);
   const servicesReady = assignmentCount > 0 && !extrasMissingEmployee;
+  const partnerReady = orderType === "AVULSO" || Boolean(partnerStoreId);
+  const paymentOptions: string[] =
+    orderType === "PARCEIRO"
+      ? [...ORDER_PAYMENT_METHODS, "FECHAMENTO_MENSAL"]
+      : [...ORDER_PAYMENT_METHODS];
   const canSubmit =
     plateReady &&
     servicesReady &&
     orderItems.length > 0 &&
     !saving &&
+    partnerReady &&
     !plateLookup?.activeOrder;
 
   const showMobileSummary = plateReady && plateLookup?.found;
@@ -338,9 +368,50 @@ export default function NovaOrdemPage() {
     return client ? `${client.id}:${vehicleId}` : vehicleId;
   }, [clientId, vehicleId, clients]);
 
+  function handleOrderTypeChange(type: "AVULSO" | "PARCEIRO") {
+    setOrderType(type);
+    setStoreError("");
+    if (type === "PARCEIRO") {
+      setPaymentMethod("FECHAMENTO_MENSAL");
+    } else {
+      setPartnerStoreId("");
+      setShowNewStore(false);
+      if (paymentMethod === "FECHAMENTO_MENSAL") setPaymentMethod("PAGAR_DEPOIS");
+    }
+  }
+
+  async function createStore() {
+    const name = newStoreName.trim();
+    if (!name) {
+      setStoreError("Informe o nome da loja.");
+      return;
+    }
+    setSavingStore(true);
+    setStoreError("");
+    try {
+      const res = await fetch("/api/partners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStoreError(data.error ?? "Não foi possível criar a loja.");
+        return;
+      }
+      await loadPartners();
+      setPartnerStoreId(data.id);
+      setNewStoreName("");
+      setShowNewStore(false);
+    } finally {
+      setSavingStore(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!clientId || !vehicleId || orderItems.length === 0) return;
+    if (orderType === "PARCEIRO" && !partnerStoreId) return;
     if (!hasAnyAssignedService(workflow, extras)) return;
     if (plateLookup?.activeOrder) return;
 
@@ -396,6 +467,7 @@ export default function NovaOrdemPage() {
           discount: Number(discount || 0),
           paymentMethod,
           notes,
+          partnerStoreId: orderType === "PARCEIRO" ? partnerStoreId : null,
           ...(retroactive ? { entryAt: new Date(entryAtLocal).toISOString() } : {}),
         }),
       });
@@ -566,6 +638,126 @@ export default function NovaOrdemPage() {
       </Card>
 
       <form id="nova-ordem-form" onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base sm:text-lg">Tipo de atendimento</CardTitle>
+            <p className="text-sm text-slate-500">
+              Cliente avulso ou carro de uma loja/parceiro (cobrança no fechamento).
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleOrderTypeChange("AVULSO")}
+                className={cn(
+                  "min-h-[44px] rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors touch-manipulation",
+                  orderType === "AVULSO"
+                    ? "border-sky-600 bg-sky-50 text-sky-800"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                )}
+              >
+                Cliente avulso
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOrderTypeChange("PARCEIRO")}
+                className={cn(
+                  "min-h-[44px] rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors touch-manipulation",
+                  orderType === "PARCEIRO"
+                    ? "border-sky-600 bg-sky-50 text-sky-800"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                )}
+              >
+                Loja / Parceiro
+              </button>
+            </div>
+
+            {orderType === "PARCEIRO" && (
+              <div className="space-y-3 border-t border-slate-100 pt-3">
+                <Field>
+                  <Label>Loja parceira</Label>
+                  <Select
+                    value={partnerStoreId}
+                    onChange={(e) => setPartnerStoreId(e.target.value)}
+                  >
+                    <option value="">Selecione a loja...</option>
+                    {partnerStores.map((store) => (
+                      <option key={store.id} value={store.id}>
+                        {store.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
+                {partnerStores.length === 0 && !showNewStore && (
+                  <p className="text-xs text-slate-500">
+                    Nenhuma loja cadastrada ainda. Cadastre a primeira abaixo.
+                  </p>
+                )}
+
+                {!showNewStore ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowNewStore(true);
+                      setStoreError("");
+                    }}
+                    className="text-sm font-medium text-sky-600 hover:text-sky-700"
+                  >
+                    + Cadastrar nova loja
+                  </button>
+                ) : (
+                  <div className="space-y-2 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
+                    <Field>
+                      <Label>Nome da nova loja</Label>
+                      <Input
+                        value={newStoreName}
+                        onChange={(e) => setNewStoreName(e.target.value)}
+                        placeholder="Ex: Renato Taxi"
+                        autoFocus
+                      />
+                    </Field>
+                    {storeError && (
+                      <p className="text-xs text-red-600" role="alert">
+                        {storeError}
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={savingStore}
+                        onClick={createStore}
+                      >
+                        {savingStore ? "Salvando..." : "Salvar loja"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={savingStore}
+                        onClick={() => {
+                          setShowNewStore(false);
+                          setNewStoreName("");
+                          setStoreError("");
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-slate-500">
+                  A ordem fica vinculada à loja — aparece na ficha dela e nas pendências
+                  para o fechamento mensal.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {showMobileSummary && selectedClient && selectedVehicle && (
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 lg:hidden">
             <p className="font-semibold text-slate-900">{selectedClient.name}</p>
@@ -698,7 +890,7 @@ export default function NovaOrdemPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-2 sm:hidden">
-              {ORDER_PAYMENT_METHODS.map((key) => (
+              {paymentOptions.map((key) => (
                 <button
                   key={key}
                   type="button"
@@ -756,7 +948,7 @@ export default function NovaOrdemPage() {
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
                 >
-                  {ORDER_PAYMENT_METHODS.map((key) => (
+                  {paymentOptions.map((key) => (
                     <option key={key} value={key}>
                       {PAYMENT_METHOD_LABELS[key]}
                     </option>
@@ -790,18 +982,25 @@ export default function NovaOrdemPage() {
         )}
 
         {showPaymentSection && (
-        <div className="hidden flex-col gap-3 sm:flex sm:flex-row">
-          <Button type="submit" className="w-full sm:w-auto" disabled={!canSubmit}>
-            {saving ? "Salvando..." : "Registrar ordem"}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            className="w-full sm:w-auto"
-            onClick={() => router.back()}
-          >
-            Cancelar
-          </Button>
+        <div className="hidden flex-col gap-2 sm:flex">
+          {!partnerReady && (
+            <p className="text-sm text-amber-800">
+              Selecione a loja parceira para registrar a ordem.
+            </p>
+          )}
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button type="submit" className="w-full sm:w-auto" disabled={!canSubmit}>
+              {saving ? "Salvando..." : "Registrar ordem"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full sm:w-auto"
+              onClick={() => router.back()}
+            >
+              Cancelar
+            </Button>
+          </div>
         </div>
         )}
       </form>
@@ -815,7 +1014,9 @@ export default function NovaOrdemPage() {
                 ? extrasMissingEmployee
                   ? "Escolha o responsável"
                   : "Selecione um serviço"
-                : `${assignmentCount} serviço(s) na ordem`}
+                : !partnerReady
+                  ? "Escolha a loja parceira"
+                  : `${assignmentCount} serviço(s) na ordem`}
             </p>
             <p className="text-lg font-bold text-slate-900">{formatCurrency(total)}</p>
           </div>

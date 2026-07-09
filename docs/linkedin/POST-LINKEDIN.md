@@ -16,7 +16,7 @@ Do balcão ao fechamento do caixa, tudo em um só lugar:
 🔹 **Financeiro** mensal e diário — receita, despesas e lucro  
 🔹 **Telão na TV** para o cliente acompanhar a fila sem ficar perguntando na recepção  
 
-Stack: **Next.js 16**, **React 19**, **PostgreSQL (Neon)** e deploy na **Vercel** — rápido, responsivo e acessível de qualquer dispositivo.
+Stack: **Next.js** · **React** · **PostgreSQL (Neon)** · **Vercel** — rápido, responsivo e acessível de qualquer dispositivo.
 
 Projeto real, operação real, problema real resolvido.
 
@@ -24,21 +24,34 @@ Se você tem um negócio local e ainda vive no caderno + planilha solta, dá par
 
 ---
 
-#desenvolvimentoweb #nextjs #react #software #empreendedorismo #gestao #lavarapido #portfolio #fullstack #saas
+#desenvolvimentodesoftware #Nextjs #React #Vercel #PostgreSQL #fullstack #tecnologia #inovacao #empreendedorismo #gestao #pequenasempresas #transformacaodigital #SaaS #portfolio #dev
 
 ---
 
-## Variação curta (se preferir post menor)
+## Por que essas hashtags?
+
+| Grupo | Tags | Objetivo |
+|-------|------|----------|
+| **Stack (marcas)** | `#Nextjs` `#React` `#Vercel` `#PostgreSQL` | Dev que segue essas tecnologias vê seu post no feed |
+| **Dev / carreira** | `#desenvolvimentodesoftware` `#fullstack` `#dev` `#portfolio` | Alcance na comunidade técnica e recrutadores |
+| **Negócio** | `#empreendedorismo` `#gestao` `#pequenasempresas` `#SaaS` | Donos de negócio e gestores — seu cliente ideal |
+| **Amplo** | `#tecnologia` `#inovacao` `#transformacaodigital` | Volume alto no LinkedIn BR |
+
+**Dica extra (vale mais que hashtag):** no corpo do post, marque as páginas **@Vercel**, **@Next.js** e **@React** (se aparecerem na busca). Menção de marca costuma performar melhor que `#` sozinha.
+
+**Quantidade:** use as **15 acima** — LinkedIn penaliza excesso; acima de 20 parece spam.
+
+---
+
+## Variação curta
 
 🚗 Entrega feita: **GoMotors** — sistema de gestão para lava-rápido.
 
 Painel em tempo real, ordens de serviço, caixa diário, financeiro e telão na TV. Tudo web, funciona no celular e na recepção.
 
-Next.js + PostgreSQL + Vercel.
+Next.js · React · PostgreSQL · Vercel — do zero à produção. 💙
 
-Projeto sob medida, do zero à produção. 💙
-
-#nextjs #react #desenvolvimentoweb #portfolio #gestao
+#Nextjs #React #Vercel #desenvolvimentodesoftware #empreendedorismo #gestao #portfolio #dev
 
 ---
 
@@ -48,3 +61,4 @@ Projeto sob medida, do zero à produção. 💙
 2. Primeira linha aparece antes do "ver mais" — comece com a entrega/resultado.
 3. Marque a Go Motors se o Matheus tiver perfil no LinkedIn (com permissão dele).
 4. Horário bom: terça a quinta, 8h–10h ou 17h–19h.
+5. Responda **todo comentário** nas primeiras 2 horas — o algoritmo prioriza posts com conversa.
