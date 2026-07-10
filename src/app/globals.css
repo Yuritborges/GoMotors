@@ -30,6 +30,22 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+@keyframes display-overdue-border {
+  0%,
+  100% {
+    border-color: rgb(239 68 68);
+    box-shadow: 0 0 14px rgb(239 68 68 / 0.7);
+  }
+  50% {
+    border-color: rgb(127 29 29);
+    box-shadow: 0 0 4px rgb(239 68 68 / 0.2);
+  }
+}
+
+.animate-display-overdue {
+  animation: display-overdue-border 1s ease-in-out infinite;
+}
+
 @supports (padding: max(0px)) {
   body {
     padding-left: env(safe-area-inset-left);

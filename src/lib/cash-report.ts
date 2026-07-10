@@ -145,10 +145,12 @@ export async function buildDailyCashReport(dateParam?: string | null): Promise<D
       id: o.id,
       status: o.status,
       currentLane: o.currentLane,
+      laneEnteredAt: o.laneEnteredAt,
       client: { name: o.client.name },
       vehicle: { plate: o.vehicle.plate },
       items: o.items.map((i) => ({
         serviceName: i.serviceName,
+        estimatedMinutes: i.estimatedMinutes,
         employee: null,
       })),
     }));

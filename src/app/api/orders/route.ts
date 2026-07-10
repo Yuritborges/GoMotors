@@ -6,12 +6,14 @@ import {
   primaryOrderEmployeeId,
   type OrderItemInput,
 } from "@/lib/build-order-items";
-import { endOfDay, startOfDay } from "@/lib/utils";
+import { businessDateKey, businessDayBounds } from "@/lib/business-day";
 import type { WorkflowTaskKey } from "@/lib/order-workflow";
 import { hasAnyAssignedService, BLOCKING_ORDER_STATUSES } from "@/lib/order-workflow";
 import { paymentStatusForMethod } from "@/lib/payments";
+import { getDisplayLaneDurations } from "@/lib/shop-settings";
 import {
   OrderEntryDateError,
+  parseOperatingDate,
   parseOrderEntryAt,
 } from "@/lib/order-entry-date";
 import { handleAuthError, requireAuth } from "@/lib/auth";
@@ -22,13 +24,15 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const dateParam = searchParams.get("date");
   const status = searchParams.get("status");
-  const today = dateParam ? new Date(dateParam) : new Date();
+  const dateKey =
+    dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : businessDateKey();
+  const { start, end } = businessDayBounds(dateKey);
 
   const orders = await prisma.serviceOrder.findMany({
     where: {
       entryAt: {
-        gte: startOfDay(today),
-        lte: endOfDay(today),
+        gte: start,
+        lte: end,
       },
       ...(status ? { status: status as never } : {}),
       ...excludeImportedOrdersWhere,
@@ -66,9 +70,14 @@ export async function POST(request: Request) {
   let entryAt: Date;
   let retroactive: boolean;
   try {
-    const parsed = parseOrderEntryAt(body.entryAt);
-    entryAt = parsed.entryAt;
-    retroactive = parsed.retroactive;
+    if (body.operatingDate) {
+      entryAt = parseOperatingDate(body.operatingDate);
+      retroactive = false;
+    } else {
+      const parsed = parseOrderEntryAt(body.entryAt);
+      entryAt = parsed.entryAt;
+      retroactive = parsed.retroactive;
+    }
   } catch (err) {
     const message =
       err instanceof OrderEntryDateError ? err.message : "Data/hora inválida.";
@@ -98,10 +107,12 @@ export async function POST(request: Request) {
   }
 
   if (!retroactive) {
+    const entryDateKey = businessDateKey(entryAt);
+    const { start, end } = businessDayBounds(entryDateKey);
     const blockingToday = await prisma.serviceOrder.findFirst({
       where: {
         vehicleId: vehicle.id,
-        entryAt: { gte: startOfDay(), lte: endOfDay() },
+        entryAt: { gte: start, lte: end },
         status: { in: [...BLOCKING_ORDER_STATUSES] },
       },
     });
@@ -147,12 +158,14 @@ export async function POST(request: Request) {
       where: { active: true },
       include: { vehiclePrices: true },
     });
+    const laneDurations = await getDisplayLaneDurations(prisma);
 
     items = buildOrderItems({
       services,
       vehicleType: vehicle.vehicleType,
       workflow,
       extras,
+      laneDurations,
     });
 
     if (items.length === 0) {
@@ -186,6 +199,7 @@ export async function POST(request: Request) {
         serviceName: service.name,
         price,
         employeeId: body.employeeId || null,
+        estimatedMinutes: service.estimatedMinutes,
       };
     });
   }
@@ -215,6 +229,7 @@ export async function POST(request: Request) {
       paymentStatus,
       notes,
       entryAt,
+      laneEnteredAt: entryAt,
       deliveredAt: retroactive ? entryAt : undefined,
       items: {
         create: items.map((item) => ({
@@ -222,6 +237,7 @@ export async function POST(request: Request) {
           serviceName: item.serviceName,
           price: item.price,
           employeeId: item.employeeId,
+          estimatedMinutes: item.estimatedMinutes,
         })),
       },
       payments:

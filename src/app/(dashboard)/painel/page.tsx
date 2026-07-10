@@ -3,12 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, ExternalLink, Monitor } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { isOwner } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/auth";
 import { PAYMENT_STATUS_LABELS } from "@/lib/constants";
 import { buildOperationalColumns } from "@/lib/display-lanes";
 import type { DisplayOrderInput } from "@/lib/display-lanes-types";
+import { DEFAULT_DISPLAY_LANE_DURATIONS, type DisplayLaneDurations } from "@/lib/shop-settings";
+import {
+  formatLaneClockTime,
+  getLaneEstimatedEndAt,
+  isLaneOverdue,
+} from "@/lib/order-lane-duration";
 import { getNextLaneLabel, isOrderInService, resolveOrderLane } from "@/lib/order-lanes";
 import { usePolling } from "@/lib/use-polling";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,10 +35,11 @@ type Order = {
   paymentStatus: string;
   paymentMethod: string;
   entryAt: string;
+  laneEnteredAt?: string;
   client: { id: string; name: string };
   vehicle: { plate: string };
   employee: { name: string } | null;
-  items: { serviceName: string; employee: { name: string } | null }[];
+  items: { serviceName: string; estimatedMinutes?: number; employee: { name: string } | null }[];
 };
 
 export default function PainelPage() {
@@ -40,7 +47,9 @@ export default function PainelPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [payOrder, setPayOrder] = useState<Order | null>(null);
-  const [bulkLoading, setBulkLoading] = useState(false);
+  const [laneDurations, setLaneDurations] = useState<DisplayLaneDurations>(
+    DEFAULT_DISPLAY_LANE_DURATIONS
+  );
 
   const owner = user ? isOwner(user.role) : false;
 
@@ -50,10 +59,18 @@ export default function PainelPage() {
       .then((data) => setUser(data?.user ?? null));
   }, []);
 
+  const [bulkLoading, setBulkLoading] = useState(false);
+
   const loadOrders = useCallback(async () => {
-    const res = await fetch("/api/orders");
-    const data = await res.json();
+    const [ordersRes, lanesRes] = await Promise.all([
+      fetch("/api/orders"),
+      fetch("/api/settings/display-lanes"),
+    ]);
+    const data = await ordersRes.json();
     setOrders(data.filter((o: Order) => o.status !== "ENTREGUE" && o.status !== "CANCELADO"));
+    if (lanesRes.ok) {
+      setLaneDurations(await lanesRes.json());
+    }
     setLoading(false);
   }, []);
 
@@ -156,17 +173,40 @@ export default function PainelPage() {
         id: o.id,
         status: o.status,
         currentLane: o.currentLane,
+        laneEnteredAt: new Date(o.laneEnteredAt ?? o.entryAt),
         client: o.client,
         vehicle: o.vehicle,
-        items: o.items,
+        items: o.items.map((item) => ({
+          serviceName: item.serviceName,
+          estimatedMinutes: item.estimatedMinutes ?? 20,
+          employee: item.employee,
+        })),
       })),
     [orders]
   );
 
   const columns = useMemo(
-    () => buildOperationalColumns(boardOrders),
-    [boardOrders]
+    () => buildOperationalColumns(boardOrders, laneDurations),
+    [boardOrders, laneDurations]
   );
+
+  const timingByOrderId = useMemo(() => {
+    const map = new Map<
+      string,
+      { laneEnteredAt: string; estimatedMinutes: number }
+    >();
+    for (const col of columns) {
+      if (col.lane === "AGUARDANDO" || col.lane === "PRONTO") continue;
+      for (const entry of col.entries) {
+        if (entry.estimatedMinutes <= 0) continue;
+        map.set(entry.orderId, {
+          laneEnteredAt: entry.laneEnteredAt,
+          estimatedMinutes: entry.estimatedMinutes,
+        });
+      }
+    }
+    return map;
+  }, [columns]);
 
   const stats = {
     aguardando: orders.filter((o) => resolveOrderLane(o) === "AGUARDANDO").length,
@@ -244,6 +284,16 @@ export default function PainelPage() {
                     {colOrders.map((order) => {
                       const nextLabel = getNextLaneLabel(resolveOrderLane(order), order.items);
                       const isReady = col.lane === "PRONTO";
+                      const timing = timingByOrderId.get(order.id);
+                      const laneEnteredAt = timing ? new Date(timing.laneEnteredAt) : null;
+                      const estimatedEndAt =
+                        timing && laneEnteredAt
+                          ? getLaneEstimatedEndAt(laneEnteredAt, timing.estimatedMinutes)
+                          : null;
+                      const overdue =
+                        timing &&
+                        laneEnteredAt &&
+                        isLaneOverdue(laneEnteredAt, timing.estimatedMinutes);
 
                       return (
                         <div
@@ -264,6 +314,24 @@ export default function PainelPage() {
                               )}
                             />
                           </div>
+                          {timing && laneEnteredAt && estimatedEndAt && (
+                            <p className="mt-2 text-xs tabular-nums text-slate-500">
+                              Início{" "}
+                              <span className="font-medium text-slate-700">
+                                {formatLaneClockTime(laneEnteredAt)}
+                              </span>
+                              {" · "}
+                              Previsão{" "}
+                              <span
+                                className={cn(
+                                  "font-medium",
+                                  overdue ? "text-red-600" : "text-slate-700"
+                                )}
+                              >
+                                {formatLaneClockTime(estimatedEndAt)}
+                              </span>
+                            </p>
+                          )}
                           <div className="mt-2 flex items-center justify-between text-xs">
                             <span
                               className={

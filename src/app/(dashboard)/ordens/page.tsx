@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Trash2 } from "lucide-react";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { businessDateKey, formatBusinessDateKey } from "@/lib/business-day";
 import { usePolling } from "@/lib/use-polling";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -22,20 +23,28 @@ type Order = {
   items: { serviceName: string }[];
 };
 
-function todayInputValue() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function isValidDateKey(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 export default function OrdensPage() {
-  const [date, setDate] = useState(todayInputValue);
+  const [date, setDate] = useState(() => businessDateKey());
   const [orders, setOrders] = useState<Order[]>([]);
   const [isOwner, setIsOwner] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
+    if (!isValidDateKey(date)) {
+      setOrders([]);
+      return;
+    }
     const res = await fetch(`/api/orders?date=${encodeURIComponent(date)}`);
-    setOrders(await res.json());
+    if (!res.ok) {
+      setOrders([]);
+      return;
+    }
+    const data = await res.json();
+    setOrders(Array.isArray(data) ? data : []);
   }, [date]);
 
   usePolling(loadOrders, 10000);
@@ -63,8 +72,11 @@ export default function OrdensPage() {
     await loadOrders();
   }
 
-  const isToday = date === todayInputValue();
-  const dateLabel = isToday ? "hoje" : formatDate(new Date(date + "T12:00:00"));
+  const todayKey = businessDateKey();
+  const isToday = date === todayKey;
+  const dateLabel = isToday ? "hoje" : formatBusinessDateKey(date);
+  const novaOrdemHref =
+    date === todayKey ? "/ordens/nova" : `/ordens/nova?operatingDate=${encodeURIComponent(date)}`;
 
   return (
     <div className="space-y-6">
@@ -76,11 +88,14 @@ export default function OrdensPage() {
           <Input
             type="date"
             value={date}
-            max={todayInputValue()}
-            onChange={(e) => setDate(e.target.value)}
+            max={todayKey}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (isValidDateKey(value)) setDate(value);
+            }}
             className="h-10 w-full sm:w-auto"
           />
-          <Link href="/ordens/nova" className="w-full sm:w-auto">
+          <Link href={novaOrdemHref} className="w-full sm:w-auto">
             <Button className="w-full sm:w-auto">Nova ordem</Button>
           </Link>
         </div>

@@ -5,6 +5,8 @@ import {
   businessDateKeyFromInstant,
   businessDayBounds,
   businessZonedTimeToUtc,
+  entryAtForOperatingDate,
+  formatBusinessDateKey,
   parseBusinessDateInput,
 } from "./business-day";
 
@@ -35,4 +37,10 @@ test("businessZonedTimeToUtc meio-dia SP em julho", () => {
     businessZonedTimeToUtc("2026-07-07", "12:00:00.000").toISOString(),
     "2026-07-07T15:00:00.000Z"
   );
+});
+
+test("formatBusinessDateKey e entryAtForOperatingDate", () => {
+  assert.equal(formatBusinessDateKey("2026-07-07"), "07/07/2026");
+  const entry = entryAtForOperatingDate("2026-07-07");
+  assert.equal(businessDateKeyFromInstant(entry), "2026-07-07");
 });

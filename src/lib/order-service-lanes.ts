@@ -1,6 +1,6 @@
 import { PRIMARY_WORKFLOW_TASKS } from "./order-workflow";
 
-export type OrderItemLike = { serviceName: string };
+export type OrderItemLike = { serviceName: string; estimatedMinutes?: number | null };
 
 function normalizeService(name: string): string {
   return name

@@ -1,3 +1,10 @@
+import {
+  businessDateKey,
+  businessZonedTimeToUtc,
+  entryAtForOperatingDate,
+  isBusinessDateKey,
+} from "@/lib/business-day";
+
 const MAX_BACKDATE_DAYS = 90;
 /** Diferença mínima em ms para considerar lançamento retroativo (não fila de hoje). */
 const RETROACTIVE_THRESHOLD_MS = 15 * 60 * 1000;
@@ -43,6 +50,33 @@ export function parseOrderEntryAt(raw: unknown): {
 
   const retroactive = now.getTime() - entryAt.getTime() > RETROACTIVE_THRESHOLD_MS;
   return { entryAt, retroactive };
+}
+
+function minBackdateKey(): string {
+  const today = businessZonedTimeToUtc(businessDateKey(), "12:00:00.000");
+  const minInstant = new Date(today.getTime() - MAX_BACKDATE_DAYS * 24 * 60 * 60 * 1000);
+  return businessDateKey(minInstant);
+}
+
+/** Caixa reaberto em outro dia: ordem operacional na data escolhida (não retroativa). */
+export function parseOperatingDate(raw: unknown): Date {
+  if (typeof raw !== "string" || !isBusinessDateKey(raw)) {
+    throw new OrderEntryDateError("Data operacional inválida.");
+  }
+
+  const todayKey = businessDateKey();
+  if (raw > todayKey) {
+    throw new OrderEntryDateError("A data operacional não pode ser no futuro.");
+  }
+
+  const minKey = minBackdateKey();
+  if (raw < minKey) {
+    throw new OrderEntryDateError(
+      `Só é possível lançar com até ${MAX_BACKDATE_DAYS} dias de atraso.`
+    );
+  }
+
+  return entryAtForOperatingDate(raw);
 }
 
 /** Valor para input datetime-local no fuso local do navegador. */

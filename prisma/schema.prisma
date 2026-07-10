@@ -265,6 +265,7 @@ model ServiceOrder {
   paymentStatus PaymentStatus @default(PENDENTE)
   notes         String?
   entryAt       DateTime      @default(now())
+  laneEnteredAt DateTime      @default(now())
   deliveredAt   DateTime?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -279,16 +280,27 @@ model ServiceOrder {
 }
 
 model OrderItem {
-  id          String  @id @default(cuid())
-  orderId     String
-  serviceId   String?
-  serviceName String
-  price       Float
-  employeeId  String?
+  id               String  @id @default(cuid())
+  orderId          String
+  serviceId        String?
+  serviceName      String
+  price            Float
+  estimatedMinutes Int     @default(20)
+  employeeId       String?
 
   order    ServiceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   service  Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   employee Employee?    @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+}
+
+/** Tempos padrão das etapas fixas no telão (Lavagem, Aspiração, etc.). */
+model ShopSettings {
+  id                     String   @id @default("default")
+  laneLavagemMinutes     Int      @default(20)
+  laneAspiracaoMinutes   Int      @default(20)
+  laneSecagemMinutes     Int      @default(20)
+  laneFinalizacaoMinutes Int      @default(20)
+  updatedAt              DateTime @updatedAt
 }
 
 model Payment {
