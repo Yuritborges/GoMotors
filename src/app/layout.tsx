@@ -16,14 +16,21 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: "#09090b",
 };
 
 export const metadata: Metadata = {
   title: "GO MOTORS — Gestão de Lavagem",
   description: "Sistema de gestão para lava-jato e estética automotiva",
+  applicationName: "GO MOTORS",
   icons: {
     icon: "/logo.png",
-    apple: "/logo.png",
+    apple: "/icons/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "GO MOTORS",
   },
 };
 
