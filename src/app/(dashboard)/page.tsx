@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StockAlertsBanner } from "@/components/stock-alerts-banner";
 import { PageHeader } from "@/components/layout/page-header";
+import { MobileHome } from "@/components/home/mobile-home";
 import { excludeImportedOrdersWhere } from "@/lib/imported-orders";
 
 async function getTodayOps() {
@@ -50,6 +51,19 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
+      <MobileHome
+        owner={owner}
+        userName={session?.name ?? "Equipe"}
+        dailyRevenue={today.dailyRevenue}
+        vehiclesToday={today.vehiclesToday}
+        statusCounts={today.statusCounts}
+      />
+
+      <div className="lg:hidden">
+        <StockAlertsBanner />
+      </div>
+
+      <div className="hidden space-y-6 sm:space-y-8 lg:block">
       <PageHeader
         title="Dashboard"
         description={
@@ -157,6 +171,7 @@ export default async function DashboardPage() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
