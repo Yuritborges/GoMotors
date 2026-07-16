@@ -45,25 +45,25 @@ type Movement = {
 };
 
 const CATEGORIES = [
-  "Limpeza",
-  "Acabamento",
-  "Consumíveis",
-  "Químicos",
-  "Equipamentos",
-  "Geral",
+  "LIMPEZA",
+  "ACABAMENTO",
+  "CONSUMÍVEIS",
+  "QUÍMICOS",
+  "EQUIPAMENTOS",
+  "GERAL",
 ];
 
 const MOVEMENT_LABELS: Record<string, string> = {
-  COMPRA: "Compra",
-  AJUSTE: "Ajuste",
-  SAIDA: "Saída",
-  ENTRADA: "Entrada",
-  INVENTARIO: "Inventário",
+  COMPRA: "COMPRA",
+  AJUSTE: "AJUSTE",
+  SAIDA: "SAÍDA",
+  ENTRADA: "ENTRADA",
+  INVENTARIO: "INVENTÁRIO",
 };
 
 const emptyForm = {
   name: "",
-  category: "Limpeza",
+  category: "LIMPEZA",
   price: "",
   stock: "",
   minStock: "5",

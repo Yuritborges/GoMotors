@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     const product = await prisma.product.create({
       data: {
         name: body.name,
-        category: body.category || "Geral",
+        category: body.category || "GERAL",
         price: Number(body.price),
         stock: stockVal !== null ? 0 : null,
         minStock: Number(body.minStock ?? 5),

@@ -1,8 +1,8 @@
 /** Etapas operacionais fixas do lava-rápido (sempre no topo do mobile). */
 export const PRIMARY_WORKFLOW_TASKS = [
-  { key: "lavagem", label: "Lavagem" },
-  { key: "aspiracao", label: "Aspiração" },
-  { key: "secagem", label: "Secagem" },
+  { key: "lavagem", label: "LAVAGEM" },
+  { key: "aspiracao", label: "ASPIRAÇÃO" },
+  { key: "secagem", label: "SECAGEM" },
 ] as const;
 
 export type WorkflowTaskKey = (typeof PRIMARY_WORKFLOW_TASKS)[number]["key"];

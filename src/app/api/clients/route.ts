@@ -10,13 +10,17 @@ export async function GET(request: Request) {
       ...(search
         ? {
             OR: [
-              { name: { contains: search } },
+              { name: { contains: search, mode: "insensitive" } },
               { phone: { contains: search } },
-              { vehicles: { some: { plate: { contains: search.toUpperCase() } } } },
+              {
+                vehicles: {
+                  some: { plate: { contains: search, mode: "insensitive" } },
+                },
+              },
             ],
           }
         : {}),
-      NOT: { notes: { contains: "Parceiro:" } },
+      NOT: { notes: { contains: "PARCEIRO:", mode: "insensitive" } },
     },
     include: {
       vehicles: true,

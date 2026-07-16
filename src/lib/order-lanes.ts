@@ -9,12 +9,12 @@ import {
 } from "./order-service-lanes";
 
 export const FIXED_LANE_LABELS: Record<string, string> = {
-  AGUARDANDO: "Aguardando",
-  LAVAGEM: "Lavagem",
-  ASPIRACAO: "Aspiração",
-  SECAGEM: "Secagem",
-  FINALIZACAO: "Finalização",
-  PRONTO: "Pronto",
+  AGUARDANDO: "AGUARDANDO",
+  LAVAGEM: "LAVAGEM",
+  ASPIRACAO: "ASPIRAÇÃO",
+  SECAGEM: "SECAGEM",
+  FINALIZACAO: "FINALIZAÇÃO",
+  PRONTO: "PRONTO",
 };
 
 export type OrderLaneInput = {
@@ -50,10 +50,9 @@ export function buildOrderLaneSequence(items: OrderItemLike[]): string[] {
 export function getLaneLabel(lane: string): string {
   if (FIXED_LANE_LABELS[lane]) return FIXED_LANE_LABELS[lane];
   if (lane.startsWith("extra:")) {
-    const name = lane.slice(6);
-    return name.charAt(0).toUpperCase() + name.slice(1);
+    return lane.slice(6).toLocaleUpperCase("pt-BR");
   }
-  return lane;
+  return lane.toLocaleUpperCase("pt-BR");
 }
 
 export function getItemsForLane(

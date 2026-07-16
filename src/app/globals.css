@@ -30,6 +30,12 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Padronização: digitação sempre em MAIÚSCULA (exceto e-mail e senha). */
+input:not([type="email"]):not([type="password"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]):not([data-no-uppercase]),
+textarea:not([data-no-uppercase]) {
+  text-transform: uppercase;
+}
+
 @keyframes display-overdue-border {
   0%,
   100% {

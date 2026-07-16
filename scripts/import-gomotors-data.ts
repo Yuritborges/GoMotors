@@ -781,7 +781,7 @@ async function main() {
       data: {
         name: v.clientName,
         phone: "—",
-        notes: v.partner ? `Parceiro: ${v.partner}` : null,
+        notes: v.partner ? `PARCEIRO: ${v.partner}` : null,
         vehicles: {
           create: {
             plate: v.plate,
@@ -875,9 +875,9 @@ async function main() {
         paymentStatus,
         notes:
           isPartnerOrder
-            ? `Loja parceira: ${row.paymentRaw} (${row.source})`
+            ? `LOJA PARCEIRA: ${row.paymentRaw} (${row.source})`
             : row.payment === "PENDENTE" && row.paymentRaw
-              ? `Ref: ${row.paymentRaw} (${row.source})`
+              ? `REF: ${row.paymentRaw} (${row.source})`
               : row.source,
         entryAt: row.date,
         deliveredAt: row.date,

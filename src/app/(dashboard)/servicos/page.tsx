@@ -45,10 +45,10 @@ const DEFAULT_LANE_DURATIONS: LaneDurations = {
 };
 
 const FIXED_STAGE_ROWS: { key: keyof LaneDurations; label: string }[] = [
-  { key: "lavagem", label: "Lavagem" },
-  { key: "aspiracao", label: "Aspiração" },
-  { key: "secagem", label: "Secagem" },
-  { key: "finalizacao", label: "Finalização" },
+  { key: "lavagem", label: "LAVAGEM" },
+  { key: "aspiracao", label: "ASPIRAÇÃO" },
+  { key: "secagem", label: "SECAGEM" },
+  { key: "finalizacao", label: "FINALIZAÇÃO" },
 ];
 
 const VEHICLE_TYPES = ["MOTO", "CARRO", "SUV", "CAMINHONETE", "OUTRO"];
@@ -57,7 +57,7 @@ const PREVIEW_COUNT = 4;
 
 const emptyService = {
   name: "",
-  category: "Lavagem",
+  category: "LAVAGEM",
   defaultPrice: "0",
   estimatedMinutes: "30",
   vehiclePrices: VEHICLE_TYPES.map((vt) => ({ vehicleType: vt, price: "0" })),

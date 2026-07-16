@@ -32,7 +32,7 @@ export function LoginForm() {
             <Field>
               <Label>E-mail</Label>
               <Input
-                type="text"
+                type="email"
                 name="email"
                 inputMode="email"
                 autoCapitalize="none"

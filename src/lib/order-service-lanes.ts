@@ -71,6 +71,6 @@ export function dynamicLaneKey(serviceName: string): string {
 
 export function displayServiceLabel(serviceName: string): string {
   const trimmed = serviceName.trim();
-  if (!trimmed) return "Serviço";
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  if (!trimmed) return "SERVIÇO";
+  return trimmed.toLocaleUpperCase("pt-BR");
 }
