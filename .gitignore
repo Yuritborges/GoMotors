@@ -6,6 +6,9 @@
 /dados/*
 !/dados/.gitkeep
 
+# Backups locais do banco (nunca versionar)
+/backups/
+
 # Variáveis de ambiente e secrets
 .env
 .env.*
